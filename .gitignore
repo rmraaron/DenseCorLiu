@@ -1,5 +1,10 @@
 01_MorphableModel.mat
+bfm_subset(29495).mat
+template_data.mat
 subject_points
 subjects
 .idea
+mesh_sampling
+load.py
+sampling_nor.py
 
