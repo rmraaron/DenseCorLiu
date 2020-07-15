@@ -84,7 +84,7 @@ def shp_exp_generate():
         # Transform to origin.
         vertex_list = vertex_list - np.mean(vertex_list, axis=0)
 
-        # Find distances to origin and do normalisation.
+        # Find distances to origin and do normalisation into a unit sphere.
         vertex_list_norm = vertex_list / np.max(np.linalg.norm(vertex_list, axis=1))
 
         vertices.append(vertex_list_norm)
