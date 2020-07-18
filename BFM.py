@@ -51,7 +51,7 @@ class BFModel(object):
 
 
 if __name__ == '__main__':
-    filename_read = "/home/yajie/Downloads/BaselFaceModel/PublicMM1/01_MorphableModel.mat"
+    filename_read = "./3ddfa_data/01_MorphableModel.mat"
     bfmModel = BFModel()
     for i in range(1500):
         bfmModel.write_obj("./subjects/bfm_{0}.obj".format(i), i)
