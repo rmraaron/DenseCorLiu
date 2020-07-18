@@ -16,7 +16,7 @@ def load_file():
     # triangle = triangle_data["mean_face"]
     triangle_data = loadmat("./3ddfa_data/tri.mat")
     tri_origin = triangle_data["tri"].T
-    return [u_exp, w_exp, u_shp, w_shp, shape_index, face_index, face, tri_origin]
+    return u_exp, w_exp, u_shp, w_shp, shape_index, face_index, face, tri_origin
 
 
 def shp_exp_generate():
@@ -29,7 +29,7 @@ def shp_exp_generate():
     # triangle = np.zeros(shape=(58366, 1))
     exp_mapping_list = [np.zeros(shape=(53215, 3))]
 
-    [u_exp, w_exp, u_shp, w_shp, shape_index, face_index, face, tri_origin] = load_file()
+    u_exp, w_exp, u_shp, w_shp, shape_index, face_index, face, tri_origin = load_file()
 
     shape_index = shape_index.astype(np.int)
     # triangle = triangle.astype(np.int)
@@ -89,11 +89,11 @@ def shp_exp_generate():
 
         vertices.append(vertex_list_norm)
 
-    return [vertices, face, shp_mapping, exp_mapping_list]
+    return vertices, face, shp_mapping, exp_mapping_list
 
 
 def write_obj(subject_num):
-    [vertices, triangle, shp_mapping, exp_mapping_list] = shp_exp_generate()
+    vertices, triangle, shp_mapping, exp_mapping_list = shp_exp_generate()
     for i in range(7):
         f = open('./subjects/sub{0}_exp{1}.obj'.format(subject_num, i), 'w')
         for j in range(0, len(vertices[i])):
