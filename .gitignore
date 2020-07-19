@@ -7,4 +7,5 @@ subjects
 mesh_sampling
 load.py
 sampling_nor.py
-
+shape_nor.py
+points_sampling
