@@ -1,5 +1,5 @@
 import tensorflow as tf
-import numpy as np
+import data_preprosessing
 
 
 def variable_on_cpu(name, shape, initializer, use_fp16=False):
@@ -95,7 +95,8 @@ def full_connected(inputs, num_outputs, scope, use_xavier=True, stddev=1e-3,
 
 def placeholder_inputs(batch_size, num_points):
     pointclouds = tf.compat.v1.placeholder(tf.float32, shape=(batch_size, num_points, 3))
-    return pointclouds
+    label_points = tf.compat.v1.placeholder(tf.float32, shape=(batch_size, num_points, 3))
+    return pointclouds, label_points
 
 
 def get_model(point_cloud, is_training, bn_decay=None):
@@ -130,14 +131,49 @@ def get_model(point_cloud, is_training, bn_decay=None):
 
     s_exp = full_connected(d_exp_net, num_point * 3, scope='fc_shape_exp', activation_fn=None)
 
-    return s_id, s_exp, end_points
+    s_pred = tf.add(s_id, s_exp)
+
+    return s_id, s_exp, s_pred, end_points
 
 
-# def get_loss():
+def get_loss(s_id, s_exp, s_pred, label_points, end_points, lambda1, lambda2):
+    faces = data_preprosessing.open_face_file('./subjects/sub0_exp0.obj')
+    # second line to fourth line points_data should be replaced by label_points
+    '''
+    points_data = data_preprosessing.load_npyfile('./points_sampling/sub{0}_rand{1}.npy'.format(0, 0))
+    points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
+    points_data = tf.expand_dims(points_data, 0)
+    '''
+    label_points = tf.squeeze(label_points)
+    shp_id = tf.reshape(s_id, shape=(29495, 3))
+    s_target = tf.reshape(label_points, shape=(1, 88485))
+
+    normals_pred = data_preprosessing.normals_cal(shp_id, faces)
+    normals_target = data_preprosessing.normals_cal(label_points, faces)
+
+    # edge_0_pred, edge_1_pred, edge_2_pred = data_preprosessing.edge_cal(s_id, faces)
+    # edge_0_target, edge_1_target, edge_2_target = data_preprosessing.edge_cal(s_target, faces)
+
+    # L1 loss for vertices
+    l_vt = tf.reduce_sum(tf.abs(s_target - s_id))
+
+    # l_normal is the loss for surface normals
+    l_normal = tf.reduce_sum(1 - tf.reduce_sum(normals_target * normals_pred, axis=1)) / normals_target.get_shape()[0]
+
+    # l_edge is the loss for edge length
+    # l_edge = tf.reduce_mean(tf.reduce_sum(tf.abs(edge_0_pred / edge_0_target - 1)) +
+    #                         tf.reduce_sum(tf.abs(edge_1_pred / edge_1_target - 1)) +
+    #                         tf.reduce_sum(tf.abs(edge_2_pred / edge_2_target - 1))) / 58366
+
+    loss_supervised = l_vt + lambda1 * l_normal
+    return loss_supervised
 
 
+'''
 if __name__ == '__main__':
+
     with tf.Graph().as_default():
-        inputs = tf.zeros((32, 29495, 3))
-        outputs = get_model(inputs, tf.constant(True))
-        print(outputs)
+        inputs = tf.zeros((1, 29495, 3))
+        s_id, s_exp, s_pred, end_points = get_model(inputs, tf.constant(True))
+        get_loss(s_id, s_exp, s_pred, 0, end_points, 1.6e-4, 1.6e-4)
+'''

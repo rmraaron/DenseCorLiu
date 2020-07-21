@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.io import loadmat
 import pickle
+import os
 
 
 def load_file():
@@ -107,6 +108,9 @@ def write_obj(subject_num):
 
 
 if __name__ == '__main__':
-
+    if not os.path.exists('./subjects'):
+        os.mkdir('./subjects')
+    if not os.path.exists('./subject_points'):
+        os.mkdir('./subject_points')
     for i in range(1500):
         write_obj(i)

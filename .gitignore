@@ -9,3 +9,8 @@ load.py
 sampling_nor.py
 shape_nor.py
 points_sampling
+log
+sub0_pred_rand9.obj
+sub0_target_rand9.obj
+sub0_target_rand50.obj
+train
