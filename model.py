@@ -96,10 +96,12 @@ def full_connected(inputs, num_outputs, scope, use_xavier=True, stddev=1e-3,
 def placeholder_inputs(batch_size, num_points):
     pointclouds = tf.compat.v1.placeholder(tf.float32, shape=(batch_size, num_points, 3))
     label_points = tf.compat.v1.placeholder(tf.float32, shape=(batch_size, num_points, 3))
-    return pointclouds, label_points
+    faces_tri = tf.compat.v1.placeholder(tf.int32, shape=(58366, 3))
+    return pointclouds, label_points, faces_tri
 
 
 def get_model(point_cloud, is_training, bn_decay=None):
+
     batch_size = point_cloud.get_shape()[0]
     num_point = point_cloud.get_shape()[1]
     end_points = {}
@@ -136,23 +138,25 @@ def get_model(point_cloud, is_training, bn_decay=None):
     return s_id, s_exp, s_pred, end_points
 
 
-def get_loss(s_id, s_exp, s_pred, label_points, end_points, lambda1, lambda2):
-    faces = data_preprosessing.open_face_file('./subjects/sub0_exp0.obj')
+def get_loss(s_id, s_exp, s_pred, faces, label_points, end_points, lambda1, lambda2):
+    # faces = data_preprosessing.open_face_file('./subjects/sub0_exp0.obj')
+
     # second line to fourth line points_data should be replaced by label_points
-    '''
-    points_data = data_preprosessing.load_npyfile('./points_sampling/sub{0}_rand{1}.npy'.format(0, 0))
-    points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
-    points_data = tf.expand_dims(points_data, 0)
-    '''
+
+    # points_data = data_preprosessing.load_npyfile('./points_sampling/sub{0}_rand{1}.npy'.format(0, 0))
+    # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
+    # points_data = tf.expand_dims(points_data, 0)
+
     label_points = tf.squeeze(label_points)
     shp_id = tf.reshape(s_id, shape=(29495, 3))
     s_target = tf.reshape(label_points, shape=(1, 88485))
+    shp_target = tf.reshape(s_target, shape=(29495, 3))
 
     normals_pred = data_preprosessing.normals_cal(shp_id, faces)
     normals_target = data_preprosessing.normals_cal(label_points, faces)
 
-    # edge_0_pred, edge_1_pred, edge_2_pred = data_preprosessing.edge_cal(s_id, faces)
-    # edge_0_target, edge_1_target, edge_2_target = data_preprosessing.edge_cal(s_target, faces)
+    edge_0_pred, edge_1_pred, edge_2_pred = data_preprosessing.edge_cal(shp_id, faces)
+    edge_0_target, edge_1_target, edge_2_target = data_preprosessing.edge_cal(shp_target, faces)
 
     # L1 loss for vertices
     l_vt = tf.reduce_sum(tf.abs(s_target - s_id))
@@ -161,11 +165,13 @@ def get_loss(s_id, s_exp, s_pred, label_points, end_points, lambda1, lambda2):
     l_normal = tf.reduce_sum(1 - tf.reduce_sum(normals_target * normals_pred, axis=1)) / normals_target.get_shape()[0]
 
     # l_edge is the loss for edge length
-    # l_edge = tf.reduce_mean(tf.reduce_sum(tf.abs(edge_0_pred / edge_0_target - 1)) +
-    #                         tf.reduce_sum(tf.abs(edge_1_pred / edge_1_target - 1)) +
-    #                         tf.reduce_sum(tf.abs(edge_2_pred / edge_2_target - 1))) / 58366
+    l_edge = tf.reduce_mean(tf.reduce_sum(tf.abs(edge_0_pred / edge_0_target - 1)) +
+                            tf.reduce_sum(tf.abs(edge_1_pred / edge_1_target - 1)) +
+                            tf.reduce_sum(tf.abs(edge_2_pred / edge_2_target - 1))) / 58366
 
-    loss_supervised = l_vt + lambda1 * l_normal
+    loss_supervised = l_vt + lambda1 * l_normal + lambda2 * l_edge
+    # loss_supervised = l_vt + lambda1 * l_normal
+
     return loss_supervised
 
 
