@@ -133,12 +133,10 @@ def get_model(point_cloud, is_training, bn_decay=None):
 
     s_exp = full_connected(d_exp_net, num_point * 3, scope='fc_shape_exp', activation_fn=None)
 
-    s_pred = tf.add(s_id, s_exp)
-
-    return s_id, s_exp, s_pred, end_points
+    return s_id, s_exp, end_points
 
 
-def get_loss(s_id, s_exp, s_pred, faces, label_points, end_points, lambda1, lambda2):
+def get_loss(s_id, faces, label_points, end_points, lambda1, lambda2):
     # faces = data_preprosessing.open_face_file('./subjects/sub0_exp0.obj')
 
     # second line to fourth line points_data should be replaced by label_points

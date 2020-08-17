@@ -4,6 +4,22 @@ import tensorflow as tf
 import os
 
 
+def open_face_obj(obj_file):
+
+    with open(obj_file, 'r') as obj:
+        data = obj.read()
+        lines = data.splitlines()
+        faces = np.zeros(dtype=np.int, shape=(58366, 3))
+        i = 0
+        for line in lines:
+            if line:
+                if line[0] == 'f':
+                    line_f = re.split(' ', line)
+                    faces[i] = [int(line_f[1]) - 1, int(line_f[2]) - 1, int(line_f[3]) - 1]
+                    i += 1
+    return faces
+
+
 def open_face_file(npy_file):
 
     # with open(obj_file, 'r') as obj:
