@@ -13,7 +13,7 @@ BN_DECAY_CLIP = 0.99
 
 BATCH_SIZE = 1
 NUM_POINT = 29495
-MAX_EPOCH = 30
+MAX_EPOCH = 60
 
 LAMBDA1 = 1.6e-4
 LAMBDA2 = 1.6e-4
@@ -28,9 +28,14 @@ if not os.path.exists('./log'):
 logfile = open('./log/log_train.txt', 'w')
 
 
-def get_learning_rate(epoch, sub_num, rand_num):
-    global_step = tf.divide(tf.divide(tf.divide(epoch, rand_num), sub_num), 5)
+def get_learning_rate(epoch):
+
+    epoch_n = tf.math.floormod(epoch - 1, MAX_EPOCH)
+
+    global_step = tf.divide(epoch_n, 5)
+
     global_step = tf.cast(global_step, tf.int32)
+
     lr = tf.compat.v1.train.exponential_decay(learning_rate=BASE_LEARNING_RATE, decay_rate=0.5,
                                               global_step=global_step, decay_steps=1, staircase=True)
 
@@ -64,7 +69,7 @@ def train():
             tf.compat.v1.summary.scalar('loss', loss)
 
             epoch_lr = tf.compat.v1.Variable(1)
-            learning_rate = get_learning_rate(epoch_lr, 1500, 10)
+            learning_rate = get_learning_rate(epoch_lr)
             # learning_rate = BASE_LEARNING_RATE
             tf.compat.v1.summary.scalar('learning_rate', learning_rate)
             optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
