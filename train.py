@@ -65,8 +65,8 @@ def train():
             batch = tf.compat.v1.Variable(0)
             bn_decay = get_bn_decay(batch)
             tf.compat.v1.summary.scalar('bn_decay', bn_decay)
-            s_id, s_exp, end_points = model.get_model(point_clouds, is_training_supervised, bn_decay=bn_decay)
-            loss = model.get_loss(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            s_id, s_exp, s_pred, end_points = model.get_model(point_clouds, is_training_supervised, bn_decay=bn_decay)
+            loss = model.get_loss(s_id, s_exp, s_pred, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
             tf.compat.v1.summary.scalar('loss', loss)
 
             epoch_lr = tf.compat.v1.Variable(1)
@@ -101,54 +101,49 @@ def train():
                'merged': merged,
                'step': batch}
 
-        fn_len = len(os.listdir('./pc_sampling'))
-        subject_num = int(fn_len / 10)
+        fn_len = len(os.listdir('./subject_points'))
+        subject_num = int(fn_len / 7)
         for epoch in range(1, MAX_EPOCH + 1):
-            for j in range(1):
-                for i in range(10):
+            for i in range(1):
 
-                    faces_triangle = data_preprosessing.open_face_obj('./subjects/sub{0}_exp0.obj'.format(i))
+                faces_triangle = data_preprosessing.open_face_obj('./subjects/sub{0}_exp0.obj'.format(i))
 
-                    log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
-                    log_writing(logfile_train, '***************** LEARNING RATE: %f *****************' % learning_rate.eval(session=sess))
-                    sys.stdout.flush()
-                    print('************************* EPOCH %d *************************' % epoch)
-                    print(learning_rate.eval(session=sess))
-                    print(epoch_lr.eval(session=sess))
+                log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
+                log_writing(logfile_train, '***************** LEARNING RATE: %f *****************' % learning_rate.eval(session=sess))
+                sys.stdout.flush()
+                print('************************* EPOCH %d *************************' % epoch)
+                print(learning_rate.eval(session=sess))
+                print(epoch_lr.eval(session=sess))
 
-                    is_training = True
+                is_training = True
 
-                    # 1500 subjects with 10 neutral expressions
+                points_data = data_preprosessing.load_npyfile('./subject_points/sub{0}_exp0.npy'.format(i))
+                # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
+                points_data = np.expand_dims(points_data, axis=0)
 
-                    log_writing(logfile_train, '_________________ sub: %d' % i + ' ' + 'rand: %d' % j + ' _________________')
-                    print('_________________ sub: %d' % i + ' ' + 'rand: %d' % j + ' _________________')
-                    points_data = data_preprosessing.load_npyfile('./subject_points/sub{0}_exp0.npy'.format(i))
-                    # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
-                    points_data = np.expand_dims(points_data, axis=0)
+                # points_data for training is same as label_points
+                # label_points = tf.expand_dims(points_data, 0)
+                label_points = points_data
 
-                    # points_data for training is same as label_points
-                    # label_points = tf.expand_dims(points_data, 0)
-                    label_points = points_data
+                # faces_triangle = data_preprosessing.open_face_file('./pc_sampling/sub{0}_rand{1}.npy'.format(i, j))
 
-                    # faces_triangle = data_preprosessing.open_face_file('./pc_sampling/sub{0}_rand{1}.npy'.format(i, j))
+                # points_data.eval(session=sess)
 
-                    # points_data.eval(session=sess)
+                # BATCH_SIZE is equal to 1, thus the shape of model inputs is (1, NUM_POINT, 3)
 
-                    # BATCH_SIZE is equal to 1, thus the shape of model inputs is (1, NUM_POINT, 3)
+                for batch in range(BATCH_SIZE):
+                    feed_dict = {ops['point_clouds']: points_data,
+                                 ops['label_points']: label_points,
+                                 ops['faces_tri']: faces_triangle,
+                                 ops['is_training_supervised']: is_training}
+                    summary, step, _, loss_value, s_id = sess.run([ops['merged'], ops['step'], ops['train_op_adam'],
+                                                                   ops['loss'], ops['s_id']], feed_dict=feed_dict)
+                    train_writer.add_summary(summary, step)
 
-                    for batch in range(BATCH_SIZE):
-                        feed_dict = {ops['point_clouds']: points_data,
-                                     ops['label_points']: label_points,
-                                     ops['faces_tri']: faces_triangle,
-                                     ops['is_training_supervised']: is_training}
-                        summary, step, _, loss_value, s_id = sess.run([ops['merged'], ops['step'], ops['train_op_adam'],
-                                                                       ops['loss'], ops['s_id']], feed_dict=feed_dict)
-                        train_writer.add_summary(summary, step)
+                    log_writing(logfile_train, 'loss_train: %f' % loss_value)
+                    print('loss_train: %f' % loss_value)
 
-                        log_writing(logfile_train, 'loss_train: %f' % loss_value)
-                        print('loss_train: %f' % loss_value)
-
-                np.save('./sub0_rand{}_epoch30'.format(j), s_id.reshape(29495, 3))
+                # np.save('./sub0_epoch30'.format(j), s_id.reshape(29495, 3))
         save_path = saver.save(sess, './log/model.ckpt')
         log_writing(logfile_train, 'model saved in file: %s' % save_path)
         print('model saved in file: %s' % save_path)
@@ -163,8 +158,8 @@ def evaluate():
             point_clouds, label_points, faces_tri = model.placeholder_inputs(BATCH_SIZE, NUM_POINT)
             is_training_supervised = tf.compat.v1.placeholder(tf.bool, shape=())
 
-            s_id, s_exp, end_points = model.get_model(point_clouds, is_training_supervised)
-            loss = model.get_loss(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            s_id, s_exp, s_pred, end_points = model.get_model(point_clouds, is_training_supervised)
+            loss = model.get_loss(s_id, s_exp, s_pred, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
 
             saver = tf.compat.v1.train.Saver()
 
