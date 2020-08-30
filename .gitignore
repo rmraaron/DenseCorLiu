@@ -14,3 +14,6 @@ train
 pc_sampling
 trash
 expression
+test
+train_id
+train_exp

@@ -2,10 +2,10 @@ import tensorflow as tf
 import data_preprosessing
 
 
-def variable_on_cpu(name, shape, initializer, use_fp16=False):
+def variable_on_cpu(name, shape, initializer, use_fp16=False, trainable=True):
     with tf.device('/device:cpu:0'):
         dtype = tf.float16 if use_fp16 else tf.float32
-        var = tf.compat.v1.get_variable(name, shape, dtype=dtype, initializer=initializer)
+        var = tf.compat.v1.get_variable(name, shape, dtype=dtype, initializer=initializer, trainable=trainable)
     return var
 
 
@@ -78,13 +78,13 @@ def max_pool2d(inputs, kernel_size, scope, stride=[2, 2], padding='VALID'):
 
 
 def full_connected(inputs, num_outputs, scope, use_xavier=True, stddev=1e-3,
-                   weight_decay=0.0, activation_fn=tf.nn.relu):
+                   weight_decay=0.0, activation_fn=tf.nn.relu, trainable=True):
     with tf.compat.v1.variable_scope(scope) as sc:
         num_input_units = inputs.get_shape()[-1]
         weights = variable_with_weight_decay('weights', shape=[num_input_units, num_outputs],
                                              use_xavier=use_xavier, stddev=stddev, wd=weight_decay)
         outputs = tf.matmul(inputs, weights)
-        biases = variable_on_cpu('biases', [num_outputs], tf.constant_initializer(0.0))
+        biases = variable_on_cpu('biases', [num_outputs], tf.constant_initializer(0.0), trainable=trainable)
         outputs = tf.add(outputs, biases)
 
         if activation_fn is not None:
@@ -100,7 +100,7 @@ def placeholder_inputs(batch_size, num_points):
     return pointclouds, label_points, faces_tri
 
 
-def get_model(point_cloud, is_training, bn_decay=None):
+def get_model_encoder(point_cloud, is_training, bn_decay=None):
 
     batch_size = point_cloud.get_shape()[0]
     num_point = point_cloud.get_shape()[1]
@@ -109,36 +109,46 @@ def get_model(point_cloud, is_training, bn_decay=None):
 
     net = conv2d(input_image, 64, [1, 3], scope='conv1', stride=[1, 1],
                  padding='VALID', bn=True, bn_decay=bn_decay, is_training=is_training)
-    net = conv2d(net, 64, [1, 1], scope='conv2', stride=[1, 1],
+    net1 = conv2d(net, 64, [1, 1], scope='conv2', stride=[1, 1],
                  padding='VALID', bn=True, bn_decay=bn_decay, is_training=is_training)
-    net = conv2d(net, 64, [1, 1], scope='conv3', stride=[1, 1],
+    net2 = conv2d(net1, 64, [1, 1], scope='conv3', stride=[1, 1],
                  padding='VALID', bn=True, bn_decay=bn_decay, is_training=is_training)
-    net = conv2d(net, 128, [1, 1], scope='conv4', stride=[1, 1],
+    net3 = conv2d(net2, 128, [1, 1], scope='conv4', stride=[1, 1],
                  padding='VALID', bn=True, bn_decay=bn_decay, is_training=is_training)
-    net = conv2d(net, 1024, [1, 1], scope='conv5', stride=[1, 1],
+    net4 = conv2d(net3, 1024, [1, 1], scope='conv5', stride=[1, 1],
                  padding='VALID', bn=True, bn_decay=bn_decay, is_training=is_training)
-    net = max_pool2d(net, [num_point, 1], scope='maxpool', padding='VALID')
+    net5 = max_pool2d(net4, [num_point, 1], scope='maxpool', padding='VALID')
 
-    net = tf.reshape(net, [batch_size, -1])
+    net6 = tf.reshape(net5, [batch_size, -1])
 
-    f_id = full_connected(net, 512, scope='fc1_parallel', activation_fn=None)
+    return net6, num_point, end_points
 
-    f_exp = full_connected(net, 512, scope='fc2_parallel', activation_fn=None)
 
-    d_id_net = full_connected(f_id, 1024, scope='fc_de_id')
+def get_model_repre(net, trainable_id=True, trainable_exp=True):
 
-    d_exp_net = full_connected(f_exp, 1024, scope='fc_de_exp')
+    f_id = full_connected(net, 512, scope='fc1_parallel', activation_fn=None, trainable=trainable_id)
 
-    s_id = full_connected(d_id_net, num_point * 3, scope='fc_shape_id', activation_fn=None)
+    f_exp = full_connected(net, 512, scope='fc2_parallel', activation_fn=None, trainable=trainable_exp)
 
-    s_exp = full_connected(d_exp_net, num_point * 3, scope='fc_shape_exp', activation_fn=None)
+    return f_id, f_exp
+
+
+def get_model_decoder(f_id, f_exp, num_point, end_points, trainable_id=True, trainable_exp=True):
+
+    d_id_net = full_connected(f_id, 1024, scope='fc_de_id', trainable=trainable_id)
+
+    d_exp_net = full_connected(f_exp, 1024, scope='fc_de_exp', trainable=trainable_exp)
+
+    s_id = full_connected(d_id_net, num_point * 3, scope='fc_shape_id', activation_fn=None, trainable=trainable_id)
+
+    s_exp = full_connected(d_exp_net, num_point * 3, scope='fc_shape_exp', activation_fn=None, trainable=trainable_exp)
 
     s_pred = tf.add(s_id, s_exp)
 
     return s_id, s_exp, s_pred, end_points
 
 
-def get_loss(s_id, s_exp, s_pred, faces, label_points, end_points, lambda1, lambda2):
+def get_loss(s_id, faces, label_points, end_points, lambda1, lambda2):
     # faces = data_preprosessing.open_face_file('./subjects/sub0_exp0.obj')
 
     # second line to fourth line points_data should be replaced by label_points
