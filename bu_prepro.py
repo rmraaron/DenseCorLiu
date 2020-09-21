@@ -3,6 +3,7 @@ import re
 import pymesh
 import trimesh
 from tqdm import tqdm
+import os
 
 
 def open_file_points(wrl_filename):
@@ -104,7 +105,7 @@ def get_vertices_index(faces):
     np.save('./realdata_ver_index', vertices_indexlist)
 
 
-def save_realpoints(wrl_filename, faces):
+def save_realpoints(wrl_filename, faces, save_file='./realpoints_bu3dfe/test'):
     nodes_array = np.zeros(shape=(29495, 3), dtype=np.float)
     nodes, faces_inpo = loop_subdivision(wrl_filename, faces)
     points_indice = np.load('realdata_ver_index.npy', allow_pickle=True)
@@ -112,12 +113,21 @@ def save_realpoints(wrl_filename, faces):
     for point_index in points_indice:
         nodes_array[i] = nodes[point_index]
         i += 1
-    np.save('./realpoints_bu3dfe/test', nodes_array)
+    np.save(save_file, nodes_array)
 
 
 if __name__ == '__main__':
     faces = open_file_mesh('./BU3DFE/F0001_AN01WH_F3D.wrl')
-    save_realpoints('./BU3DFE/F0001_AN01WH_F3D.wrl', faces)
+
+    if not os.path.exists('./realpoints_bu3dfe'):
+        os.mkdir('./realpoints_bu3dfe')
+
+    for file in tqdm(os.listdir('./BU3DFE')):
+        if file.endswith('.wrl'):
+            file_path = os.path.join('./BU3DFE', file)
+            save_path = os.path.join('./realpoints_bu3dfe', os.path.splitext(file)[0])
+            save_realpoints(file_path, faces, save_path)
+
 
 
 
