@@ -160,6 +160,7 @@ def get_loss(s_id, faces, label_points, end_points, lambda1, lambda2):
     # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
     # points_data = tf.expand_dims(points_data, 0)
 
+
     label_points = tf.squeeze(label_points)
     shp_id = tf.reshape(s_id, shape=(29495, 3))
     s_target = tf.reshape(label_points, shape=(1, 88485))
@@ -186,6 +187,20 @@ def get_loss(s_id, faces, label_points, end_points, lambda1, lambda2):
     # loss_supervised = l_vt + lambda1 * l_normal
 
     return loss_supervised
+
+
+def get_loss_real(s_id, faces, label_points, end_points, lambda1, lambda2):
+
+    shp_id = tf.reshape(s_id, shape=(29495, 3))
+
+    dist1, idx1, dist2, idx2 = data_preprosessing.nn_distance(shp_id, label_points)
+    loss_unsupervised = tf.reduce_sum(dist1) + tf.reduce_sum(dist2)
+    return loss_unsupervised
+
+
+
+
+
 
 
 '''

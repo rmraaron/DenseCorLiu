@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-import model
+import model_new as model
 import os
 import sys
 import data_preprosessing
@@ -14,7 +14,7 @@ BN_DECAY_CLIP = 0.99
 
 BATCH_SIZE = 1
 NUM_POINT = 29495
-MAX_EPOCH_ID = 30
+MAX_EPOCH_ID = 150
 MAX_EPOCH_EXP = 30
 
 LAMBDA1 = 1.6e-4
@@ -86,8 +86,9 @@ def train():
             tf.compat.v1.summary.scalar('bn_decay', bn_decay)
             net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_supervised, bn_decay=bn_decay)
             f_id, f_exp = model.get_model_repre(net6)
-            s_id, s_exp, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
-            loss = model.get_loss(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
+            # loss = model.get_loss(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            loss = model.get_loss_real(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
             tf.compat.v1.summary.scalar('loss', loss)
 
             epoch_lr = tf.compat.v1.Variable(1)
@@ -138,6 +139,7 @@ def train():
                'is_training_supervised': is_training_supervised,
                's_id': s_id,
                's_exp': s_exp,
+               's_pred': s_pred,
                'faces_tri': faces_tri,
                'loss': loss,
                'train_op_adam': train_op_adam,
@@ -147,7 +149,7 @@ def train():
         fn_len = len(os.listdir('./subject_points'))
         subject_num = int(fn_len / 7)
         for epoch in range(1, MAX_EPOCH_ID + 1):
-            for i in range(5):
+            for i in range(1):
 
                 faces_triangle = data_preprosessing.open_face_obj('./subjects/sub{0}_exp0.obj'.format(i))
 
@@ -158,18 +160,19 @@ def train():
                 print(learning_rate.eval(session=sess))
                 print(epoch_lr.eval(session=sess))
 
-                train_one_epoch_id(sess, ops, train_writer_id, i, faces_triangle)
+                train_one_epoch_id(sess, ops, train_writer_id, i, faces_triangle, epoch)
 
-                # np.save('./sub0_epoch30'.format(j), s_id.reshape(29495, 3))
+
         save_path = saver.save(sess, './log/fixed/model.ckpt')
         log_writing(logfile_train, 'model saved in file: %s' % save_path)
         print('model saved in file: %s' % save_path)
 
 
-def train_one_epoch_id(sess, ops, train_writer, i, faces_triangle):
+def train_one_epoch_id(sess, ops, train_writer, i, faces_triangle, epoch):
     is_training = True
 
     points_data = data_preprosessing.load_npyfile('./subject_points/sub{0}_exp0.npy'.format(i))
+    # points_data = data_preprosessing.load_real_npyfile('./test.npy')
     # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
     points_data = np.expand_dims(points_data, axis=0)
 
@@ -195,6 +198,9 @@ def train_one_epoch_id(sess, ops, train_writer, i, faces_triangle):
         log_writing(logfile_train, 'loss_train: %f' % loss_value)
         print('loss_train: %f' % loss_value)
 
+        if epoch == MAX_EPOCH_ID:
+            np.save('./sub{}_exp0'.format(i), s_id.reshape(29495, 3))
+
 
 def train_exp():
 
@@ -207,9 +213,9 @@ def train_exp():
             bn_decay = get_bn_decay(batch)
             tf.compat.v1.summary.scalar('bn_decay', bn_decay)
             net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_supervised,
-                                                                  bn_decay=bn_decay, trainable=False)
+                                                                      bn_decay=bn_decay)
             f_id, f_exp = model.get_model_repre(net6, trainable_id=False)
-            s_id, s_exp, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points, trainable_id=False)
+            s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points, trainable_id=False)
             loss = model.get_loss(s_exp, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
 
             tf.compat.v1.summary.scalar('loss', loss)
@@ -274,6 +280,7 @@ def train_exp():
                'f_exp': f_exp,
                's_id': s_id,
                's_exp': s_exp,
+               's_pred': s_pred,
                'faces_tri': faces_tri,
                'loss': loss,
                'train_op_adam': train_op_adam,
@@ -289,60 +296,65 @@ def train_exp():
 
         label_list = []
 
-        for j in range(1, 5):
-
-            for i in range(5):
-
-                log_writing(logfile_train, '_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
-                print('_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
-
-                points_data = data_preprosessing.load_npyfile('./subject_points/sub{}_exp{}.npy'.format(i, j))
-                # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
-                points_data = np.expand_dims(points_data, axis=0)
-
-                # points_data for training is same as label_points
-                # label_points = tf.expand_dims(points_data, 0)
-                label_points = points_data
-
-                pc_list.append(points_data)
-
-                label_list.append(label_points)
-
-        indices = list(zip(pc_list, label_list))
-
-        random.shuffle(indices)
-
-        pc_list, label_list = zip(* indices)
-
         for epoch in range(1, MAX_EPOCH_EXP + 1):
 
-            for batch in range(BATCH_SIZE):
+            for j in range(1, 5):
 
-                for point_data, label_point in zip(pc_list, label_list):
+                for i in range(5):
 
-                    log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
-                    log_writing(logfile_train,
-                                '***************** LEARNING RATE: %f *****************' % learning_rate.eval(
-                                    session=sess))
-                    sys.stdout.flush()
-                    print('************************* EPOCH %d *************************' % epoch)
-                    print(learning_rate.eval(session=sess))
-                    print(epoch_lr.eval(session=sess))
+                    log_writing(logfile_train, '_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
+                    print('_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
 
-                    is_training = True
+                    points_data = data_preprosessing.load_npyfile('./subject_points/sub{}_exp{}.npy'.format(i, j))
+                    # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
+                    points_data = np.expand_dims(points_data, axis=0)
 
-                    feed_dict = {ops['point_clouds']: point_data,
-                                 ops['label_points']: label_point,
-                                 ops['faces_tri']: faces_triangle,
-                                 ops['is_training_supervised']: is_training}
-                    summary, step, _, loss_value, s_exp = sess.run([ops['merged'], ops['step'], ops['train_op_adam'],
-                                                                   ops['loss'], ops['s_exp']], feed_dict=feed_dict)
-                    train_writer_exp.add_summary(summary, step)
+                    # points_data for training is same as label_points
+                    # label_points = tf.expand_dims(points_data, 0)
+                    label_points = points_data
 
-                    log_writing(logfile_train, 'loss_train: %f' % loss_value)
-                    print('loss_train: %f' % loss_value)
+                    # pc_list.append(points_data)
 
-        np.save('./sub{}_exp{}_epoch20_30'.format(i, j), s_exp.reshape(29495, 3))
+                    # label_list.append(label_points)
+
+        # indices = list(zip(pc_list, label_list))
+
+        # random.shuffle(indices)
+
+        # pc_list, label_list = zip(* indices)
+
+        # for epoch in range(1, MAX_EPOCH_EXP + 1):
+
+            # for batch in range(BATCH_SIZE):
+
+                # for point_data, label_point in zip(pc_list, label_list):
+
+                    for batch in range(BATCH_SIZE):
+
+                        log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
+                        log_writing(logfile_train,
+                                    '***************** LEARNING RATE: %f *****************' % learning_rate.eval(
+                                        session=sess))
+                        sys.stdout.flush()
+                        print('************************* EPOCH %d *************************' % epoch)
+                        print(learning_rate.eval(session=sess))
+                        print(epoch_lr.eval(session=sess))
+
+                        is_training = True
+
+                        feed_dict = {ops['point_clouds']: points_data,
+                                     ops['label_points']: label_points,
+                                     ops['faces_tri']: faces_triangle,
+                                     ops['is_training_supervised']: is_training}
+                        summary, step, _, loss_value, s_exp, s_pred = sess.run([ops['merged'], ops['step'],
+                                                                                ops['train_op_adam'], ops['loss'],
+                                                                                ops['s_exp'], ops['s_pred']], feed_dict=feed_dict)
+                        train_writer_exp.add_summary(summary, step)
+
+                        log_writing(logfile_train, 'loss_train: %f' % loss_value)
+                        print('loss_train: %f' % loss_value)
+                        if epoch == MAX_EPOCH_EXP:
+                            np.save('./sub{}_exp{}'.format(i, j), s_exp.reshape(29495, 3))
         saver = tf.compat.v1.train.Saver()
         save_path = saver.save(sess, './log/model.ckpt')
         log_writing(logfile_train, 'model saved in file: %s' % save_path)
@@ -365,8 +377,8 @@ def evaluate():
 
             net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_supervised)
             f_id, f_exp = model.get_model_repre(net6)
-            s_id, s_exp, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
-            loss = model.get_loss(s_exp, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
+            loss = model.get_loss(s_pred, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
 
             saver = tf.compat.v1.train.Saver()
 
@@ -386,16 +398,17 @@ def evaluate():
                'f_exp': f_exp,
                's_id': s_id,
                's_exp': s_exp,
+               's_pred': s_pred,
                'faces_tri': faces_tri,
                'loss': loss}
 
         fn_len = len(os.listdir('./subject_points'))
         subject_num = int(fn_len / 7)
-        for i in range(1, 2):
+        for i in range(5):
 
             faces_triangle = data_preprosessing.open_face_obj('./subjects/sub{0}_exp0.obj'.format(i))
 
-            for j in range(1, 5):
+            for j in range(5):
                 # 1500 subjects with 6 expressions
                 log_writing(logfile_eval, '_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
                 print('_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
@@ -413,17 +426,17 @@ def evaluate():
                                  ops['label_points']: label_points,
                                  ops['faces_tri']: faces_triangle,
                                  ops['is_training_supervised']: is_training}
-                    loss_value, s_exp = sess.run([ops['loss'], ops['s_exp']], feed_dict=feed_dict)
+                    loss_value, s_pred = sess.run([ops['loss'], ops['s_pred']], feed_dict=feed_dict)
 
                     log_writing(logfile_eval, 'loss_test: %f' % loss_value)
                     print('loss_test: %f' % loss_value)
 
-                np.save('./sub{}_exp{}'.format(i, j), s_exp.reshape(29495, 3))
+                np.save('./sub{}_exp{}'.format(i, j), s_pred.reshape(29495, 3))
 
 
 if __name__ == '__main__':
-    # train()
+    train()
     # train_exp()
     # logfile_train.close()
-    evaluate()
+    # evaluate()
     # logfile_eval.close()

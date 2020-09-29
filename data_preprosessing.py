@@ -1,7 +1,12 @@
 import numpy as np
 import re
 import tensorflow as tf
+
+from tensorflow.python.framework import ops
+import sys
 import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+nn_distance_module=tf.load_op_library(os.path.join(BASE_DIR, 'tf_nndistance_so.so'))
 
 
 def open_face_obj(obj_file):
@@ -72,6 +77,11 @@ def load_npyfile(npy_file):
     return points_clouds[0]
 
 
+def load_real_npyfile(npy_file):
+    points_clouds = np.load(npy_file, allow_pickle=True)
+    return points_clouds
+
+
 def points_sampling(i, npy_file, faces):
     points_data = np.load(npy_file, allow_pickle=True)[0]
     for j in range(10):
@@ -82,6 +92,72 @@ def points_sampling(i, npy_file, faces):
         shuffled_points_data = points_data[index_random]
         shuffled_faces = face_index_random[faces]
         np.save('./pc_sampling/sub{0}_rand{1}'.format(i, j), (shuffled_points_data, shuffled_faces))
+
+
+def nn_distance(shp_id, label_points):
+
+    # def chamfer_distance(point_set_a, point_set_b, name=None):
+    #     with tf.compat.v1.name_scope(name, "chamfer_distance_evaluate",
+    #                                  [point_set_a, point_set_b]):
+    #         point_set_a = tf.convert_to_tensor(value=point_set_a)
+    #         point_set_b = tf.convert_to_tensor(value=point_set_b)
+    #
+    #         dimension = point_set_a.shape.as_list()[-1]
+    #
+    #         # Create N x M matrix where the entry i,j corresponds to ai - bj (vector of
+    #         # dimension D).
+    #         difference = (
+    #                 tf.expand_dims(point_set_a, axis=-2) -
+    #                 tf.expand_dims(point_set_b, axis=-3))
+    #         # Calculate the square distances between each two points: |ai - bj|^2.
+    #         square_distances = tf.einsum("...i,...i->...", difference, difference)
+    #
+    #         minimum_square_distance_a_to_b = tf.reduce_min(
+    #             input_tensor=square_distances, axis=-1)
+    #         minimum_square_distance_b_to_a = tf.reduce_min(
+    #             input_tensor=square_distances, axis=-2)
+    #
+    #         return (
+    #                 tf.reduce_mean(input_tensor=minimum_square_distance_a_to_b, axis=-1) +
+    #                 tf.reduce_mean(input_tensor=minimum_square_distance_b_to_a, axis=-1))
+    # loss = chamfer_distance(shp_pred, label_points)
+    #
+    # return loss
+    '''
+    dist = tf.Variable(1, shape=(N, 1))
+    for i in range(N):
+        points = tf.gather(shp_id, i)
+        points_pre = tf.reshape(points, shape=(1, 3))
+        pc_diff = label_points - points_pre
+        pc_dist = tf.sqrt(tf.reduce_sum(pc_diff ** 2, axis=1))
+        dist1_point = tf.reduce_min(pc_dist)
+        idx1_point = tf.argmin(pc_dist)
+        dist[i] = dist1_point
+        print()
+    '''
+
+    shp_pred = tf.expand_dims(shp_id, 0)
+    # N and M represent numbers of two point clouds respectively
+    # N = shp_pred.get_shape()[1]
+    # M = label_points.get_shape()[1]
+    # pre_expand_tile = tf.tile(tf.expand_dims(shp_pred, 2), [1, 1, M, 1])
+    # label_expand_tile = tf.tile(tf.expand_dims(label_points, 1), [1, N, 1, 1])
+    # pc_diff = pre_expand_tile - label_expand_tile
+    # pc_dist = tf.sqrt(tf.reduce_sum(pc_diff ** 2, axis=-1))
+    # dist1 = tf.reduce_min(pc_dist, axis=2)
+    # idx1 = tf.argmin(pc_dist, axis=2)
+    # dist2 = tf.reduce_min(pc_dist, axis=1)
+    # idx2 = tf.argmin(pc_dist, axis=1)
+    # return dist1, idx1, dist2, idx2
+    return nn_distance_module.nn_distance(shp_pred, label_points)
+
+@ops.RegisterGradient('NnDistance')
+def _nn_distance_grad(op,grad_dist1,grad_idx1,grad_dist2,grad_idx2):
+    xyz1=op.inputs[0]
+    xyz2=op.inputs[1]
+    idx1=op.outputs[1]
+    idx2=op.outputs[3]
+    return nn_distance_module.nn_distance_grad(xyz1,xyz2,grad_dist1,idx1,grad_dist2,idx2)
 
 
 # points_random = np.zeros(shape=(29495, 3))
