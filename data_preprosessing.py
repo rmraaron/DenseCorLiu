@@ -79,7 +79,9 @@ def load_npyfile(npy_file):
 
 def load_real_npyfile(npy_file):
     points_clouds = np.load(npy_file, allow_pickle=True)
-    return points_clouds
+    points_clouds = points_clouds - np.mean(points_clouds, axis=0)
+    points_clouds_norm = points_clouds / np.max(np.linalg.norm(points_clouds, axis=1))
+    return points_clouds_norm
 
 
 def points_sampling(i, npy_file, faces):
