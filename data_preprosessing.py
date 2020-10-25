@@ -1,10 +1,12 @@
 import numpy as np
 import re
 import tensorflow as tf
-
+import random
 from tensorflow.python.framework import ops
 import sys
 import os
+import h5py
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 nn_distance_module=tf.load_op_library(os.path.join(BASE_DIR, 'tf_nndistance_so.so'))
 
@@ -96,6 +98,13 @@ def points_sampling(i, npy_file, faces):
         np.save('./pc_sampling/sub{0}_rand{1}'.format(i, j), (shuffled_points_data, shuffled_faces))
 
 
+# def shuffle_data(pc_list, label_list):
+#     indices = list(zip(pc_list, label_list))
+#     random.shuffle(indices)
+#     pc_list, label_list = zip(*indices)
+#     return pc_list, label_list
+
+
 def nn_distance(shp_id, label_points):
 
     # def chamfer_distance(point_set_a, point_set_b, name=None):
@@ -160,6 +169,20 @@ def _nn_distance_grad(op,grad_dist1,grad_idx1,grad_dist2,grad_idx2):
     idx1=op.outputs[1]
     idx2=op.outputs[3]
     return nn_distance_module.nn_distance_grad(xyz1,xyz2,grad_dist1,idx1,grad_dist2,idx2)
+
+
+def loadh5File(h5file):
+    f = h5py.File(h5file)
+    data = f['data'][:]
+    label = f['data'][:]
+    return data, label
+
+
+def shuffle_data(data, label):
+    idx = np.arange(data.shape[0])
+    np.random.shuffle(idx)
+    idx = idx[:6000]
+    return data[idx, ...], label[idx], idx
 
 
 # points_random = np.zeros(shape=(29495, 3))

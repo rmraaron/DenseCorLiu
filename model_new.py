@@ -103,7 +103,7 @@ def placeholder_inputs(batch_size, num_points):
     return pointclouds, label_points, faces_tri
 
 
-def get_model_encoder(point_cloud, is_training, bn_decay=None, trainable=True):
+def get_model_encoder(point_cloud, is_training, bn_decay=None, trainable=True, bn=True):
 
     batch_size = point_cloud.get_shape()[0]
     num_point = point_cloud.get_shape()[1]
@@ -111,15 +111,15 @@ def get_model_encoder(point_cloud, is_training, bn_decay=None, trainable=True):
     input_image = tf.expand_dims(point_cloud, -1)
 
     net = conv2d(input_image, 64, [1, 3], scope='conv1', stride=[1, 1], padding='VALID',
-                 bn=True, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
+                 bn=bn, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
     net1 = conv2d(net, 64, [1, 1], scope='conv2', stride=[1, 1], padding='VALID',
-                  bn=True, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
+                  bn=bn, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
     net2 = conv2d(net1, 64, [1, 1], scope='conv3', stride=[1, 1], padding='VALID',
-                  bn=True, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
+                  bn=bn, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
     net3 = conv2d(net2, 128, [1, 1], scope='conv4', stride=[1, 1], padding='VALID',
-                  bn=True, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
+                  bn=bn, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
     net4 = conv2d(net3, 1024, [1, 1], scope='conv5', stride=[1, 1], padding='VALID',
-                  bn=True, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
+                  bn=bn, bn_decay=bn_decay, is_training=is_training, trainable=trainable)
     net5 = max_pool2d(net4, [num_point, 1], scope='maxpool', padding='VALID')
 
     net6 = tf.reshape(net5, [batch_size, -1])
@@ -183,7 +183,7 @@ def get_loss(s_id, faces, label_points, end_points, lambda1, lambda2):
                             tf.reduce_sum(tf.abs(edge_1_pred / edge_1_target - 1)) +
                             tf.reduce_sum(tf.abs(edge_2_pred / edge_2_target - 1))) / 58366
 
-    loss_supervised = l_vt + lambda1 * l_normal + lambda2 * l_edge
+    loss_supervised = 0.001 * l_vt + lambda1 * l_normal + lambda2 * l_edge
     # loss_supervised = l_vt + lambda1 * l_normal
 
     return loss_supervised

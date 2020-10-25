@@ -1,10 +1,11 @@
 import tensorflow as tf
 import numpy as np
+from tqdm import tqdm
+
 import model_new as model
 import os
 import sys
 import data_preprosessing
-import random
 
 DECAY_STEP = 200000
 BN_INIT_DECAY = 0.5
@@ -14,8 +15,9 @@ BN_DECAY_CLIP = 0.99
 
 BATCH_SIZE = 1
 NUM_POINT = 29495
-MAX_EPOCH_ID = 150
-MAX_EPOCH_EXP = 30
+MAX_EPOCH_ID = 10
+MAX_EPOCH_EXP = 10
+MAX_EPOCH_END = 10
 
 LAMBDA1 = 1.6e-4
 LAMBDA2 = 1.6e-4
@@ -30,29 +32,10 @@ if not os.path.exists('./log/fixed'):
     os.mkdir('./log/fixed')
 
 
-logfile_train = open('./log/log_train.txt', 'w')
-
-logfile_eval = open('./log/log_eval.txt', 'w')
-
-
-def get_learning_rate_id(epoch, max_epoch, num):
-    epoch_n = tf.divide(epoch - 1, num) + 1
+def get_learning_rate(epoch_lr, num):
+    epoch_n = tf.divide(epoch_lr, num) + 1
 
     global_step = tf.divide(epoch_n - 1, 5)
-
-    global_step = tf.cast(global_step, tf.int32)
-
-    lr = tf.compat.v1.train.exponential_decay(learning_rate=BASE_LEARNING_RATE, decay_rate=0.5,
-                                              global_step=global_step, decay_steps=1, staircase=True)
-
-    return lr
-
-
-def get_learning_rate_exp(epoch, max_epoch):
-
-    epoch_n = tf.math.floormod(epoch - 1, max_epoch)
-
-    global_step = tf.divide(epoch_n, 5)
 
     global_step = tf.cast(global_step, tf.int32)
 
@@ -75,6 +58,7 @@ def log_writing(logfile, str_written):
 
 
 def train():
+    logfile_train = open('./log/log_train.txt', 'w')
     with tf.Graph().as_default():
         with tf.device('/device:gpu:0'):
 
@@ -92,7 +76,7 @@ def train():
             tf.compat.v1.summary.scalar('loss', loss)
 
             epoch_lr = tf.compat.v1.Variable(1)
-            learning_rate = get_learning_rate_id(epoch_lr, MAX_EPOCH_ID, 5)
+            learning_rate = get_learning_rate(epoch_lr, 1500)
             # learning_rate = BASE_LEARNING_RATE
             tf.compat.v1.summary.scalar('learning_rate', learning_rate)
             optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
@@ -144,23 +128,19 @@ def train():
                'loss': loss,
                'train_op_adam': train_op_adam,
                'merged': merged,
-               'step': batch}
+               'step': epoch_lr}
 
-        fn_len = len(os.listdir('./subject_points'))
-        subject_num = int(fn_len / 7)
-        for epoch in range(1, MAX_EPOCH_ID + 1):
-            for i in range(1):
+        faces_triangle = data_preprosessing.open_face_obj('./subjects/sub0_exp0.obj')
 
-                faces_triangle = data_preprosessing.open_face_obj('./subjects/sub{0}_exp0.obj'.format(i))
+        for epoch in tqdm(range(1, MAX_EPOCH_ID + 1)):
+            log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
+            log_writing(logfile_train,
+                        '***************** LEARNING RATE: %f *****************' % learning_rate.eval(session=sess))
+            sys.stdout.flush()
+            print('************************* EPOCH %d *************************' % epoch)
 
-                log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
-                log_writing(logfile_train, '***************** LEARNING RATE: %f *****************' % learning_rate.eval(session=sess))
-                sys.stdout.flush()
-                print('************************* EPOCH %d *************************' % epoch)
-                print(learning_rate.eval(session=sess))
-                print(epoch_lr.eval(session=sess))
-
-                train_one_epoch_id(sess, ops, train_writer_id, i, faces_triangle, epoch)
+            epoch_mean_loss = train_one_epoch_id(sess, ops, train_writer_id, logfile_train, faces_triangle, epoch, epoch_lr)
+            print('epoch mean loss: %f' % epoch_mean_loss)
 
 
         save_path = saver.save(sess, './log/fixed/model.ckpt')
@@ -168,27 +148,29 @@ def train():
         print('model saved in file: %s' % save_path)
 
 
-def train_one_epoch_id(sess, ops, train_writer, i, faces_triangle, epoch):
+def train_one_epoch_id(sess, ops, train_writer, logfile_train, faces_triangle, epoch, epoch_lr):
     is_training = True
 
-    points_data = data_preprosessing.load_npyfile('./subject_points/sub{0}_exp0.npy'.format(i))
-    # points_data = data_preprosessing.load_real_npyfile('./test.npy')
-    # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
-    points_data = np.expand_dims(points_data, axis=0)
+    pc_data, pc_label = data_preprosessing.loadh5File('./dataset/subject_points.h5')
 
-    # points_data for training is same as label_points
-    # label_points = tf.expand_dims(points_data, 0)
-    label_points = points_data
+    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label)
 
-    # faces_triangle = data_preprosessing.open_face_file('./pc_sampling/sub{0}_rand{1}.npy'.format(i, j))
+    file_size = pc_data.shape[0]
+    num_batches = file_size
 
-    # points_data.eval(session=sess)
+    epoch_loss = 0
 
-    # BATCH_SIZE is equal to 1, thus the shape of model inputs is (1, NUM_POINT, 3)
+    for batch_idx in tqdm(range(num_batches)):
 
-    for batch in range(BATCH_SIZE):
-        feed_dict = {ops['point_clouds']: points_data,
-                     ops['label_points']: label_points,
+        start_idx = batch_idx * BATCH_SIZE
+        end_idx = (batch_idx+1) * BATCH_SIZE
+
+        point_clouds = pc_data[start_idx:end_idx, :, :]
+
+        point_label = pc_label[start_idx:end_idx, :, :]
+
+        feed_dict = {ops['point_clouds']: point_clouds,
+                     ops['label_points']: point_label,
                      ops['faces_tri']: faces_triangle,
                      ops['is_training_supervised']: is_training}
         summary, step, _, loss_value, s_id = sess.run([ops['merged'], ops['step'], ops['train_op_adam'],
@@ -196,13 +178,20 @@ def train_one_epoch_id(sess, ops, train_writer, i, faces_triangle, epoch):
         train_writer.add_summary(summary, step)
 
         log_writing(logfile_train, 'loss_train: %f' % loss_value)
-        print('loss_train: %f' % loss_value)
 
-        if epoch == MAX_EPOCH_ID:
-            np.save('./sub{}_exp0'.format(i), s_id.reshape(29495, 3))
+        epoch_loss += loss_value
+
+        # if epoch == MAX_EPOCH_ID:
+        #     np.save('./real{}_exp0'.format(batch), s_id.reshape(29495, 3))
+
+    epoch_loss_ave = epoch_loss / float(num_batches)
+    log_writing(logfile_train, 'mean_loss: %f' % epoch_loss_ave)
+    return epoch_loss_ave
+
 
 
 def train_exp():
+    logfile_train_exp = open('./log/log_train_exp.txt', 'w')
 
     with tf.Graph().as_default():
         with tf.device('/device:gpu:0'):
@@ -221,7 +210,7 @@ def train_exp():
             tf.compat.v1.summary.scalar('loss', loss)
 
             epoch_lr = tf.compat.v1.Variable(1)
-            learning_rate = get_learning_rate_id(epoch_lr, MAX_EPOCH_EXP, 20)
+            learning_rate = get_learning_rate(epoch_lr, 1500 * 6)
             tf.compat.v1.summary.scalar('learning_rate', learning_rate)
             optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
             train_op_adam = optimizer.minimize(loss, global_step=epoch_lr)
@@ -264,7 +253,7 @@ def train_exp():
         sess.run(init, {is_training_supervised: True})
 
         saver.restore(sess, './log/fixed/model.ckpt')
-        log_writing(logfile_train, 'model restored')
+        log_writing(logfile_train_exp, 'model restored')
 
         # print("weight_fc_id : %s" % weight_fc_id.eval(sess))
         # print("bias_fc_id : %s" % bias_fc_id.eval(sess))
@@ -285,102 +274,90 @@ def train_exp():
                'loss': loss,
                'train_op_adam': train_op_adam,
                'merged': merged,
-               'step': batch}
+               'step': epoch_lr}
 
-        fn_len = len(os.listdir('./subject_points'))
-        subject_num = int(fn_len / 7)
 
         faces_triangle = data_preprosessing.open_face_obj('./subjects/sub0_exp0.obj')
 
-        pc_list = []
+        for epoch in tqdm(range(1, MAX_EPOCH_EXP + 1)):
 
-        label_list = []
+            log_writing(logfile_train_exp, '************************* EPOCH %d *************************' % epoch)
+            log_writing(logfile_train_exp,
+                        '***************** LEARNING RATE: %f *****************' % learning_rate.eval(session=sess))
+            sys.stdout.flush()
+            print('************************* EPOCH %d *************************' % epoch)
 
-        for epoch in range(1, MAX_EPOCH_EXP + 1):
+            epoch_mean_loss = train_one_epoch_exp(sess, ops, train_writer_exp, logfile_train_exp, faces_triangle, epoch, epoch_lr)
+            print('epoch mean loss: %f' % epoch_mean_loss)
 
-            for j in range(1, 5):
-
-                for i in range(5):
-
-                    log_writing(logfile_train, '_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
-                    print('_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
-
-                    points_data = data_preprosessing.load_npyfile('./subject_points/sub{}_exp{}.npy'.format(i, j))
-                    # points_data = tf.convert_to_tensor(points_data, dtype=tf.float32)
-                    points_data = np.expand_dims(points_data, axis=0)
-
-                    # points_data for training is same as label_points
-                    # label_points = tf.expand_dims(points_data, 0)
-                    label_points = points_data
-
-                    # pc_list.append(points_data)
-
-                    # label_list.append(label_points)
-
-        # indices = list(zip(pc_list, label_list))
-
-        # random.shuffle(indices)
-
-        # pc_list, label_list = zip(* indices)
-
-        # for epoch in range(1, MAX_EPOCH_EXP + 1):
-
-            # for batch in range(BATCH_SIZE):
-
-                # for point_data, label_point in zip(pc_list, label_list):
-
-                    for batch in range(BATCH_SIZE):
-
-                        log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
-                        log_writing(logfile_train,
-                                    '***************** LEARNING RATE: %f *****************' % learning_rate.eval(
-                                        session=sess))
-                        sys.stdout.flush()
-                        print('************************* EPOCH %d *************************' % epoch)
-                        print(learning_rate.eval(session=sess))
-                        print(epoch_lr.eval(session=sess))
-
-                        is_training = True
-
-                        feed_dict = {ops['point_clouds']: points_data,
-                                     ops['label_points']: label_points,
-                                     ops['faces_tri']: faces_triangle,
-                                     ops['is_training_supervised']: is_training}
-                        summary, step, _, loss_value, s_exp, s_pred = sess.run([ops['merged'], ops['step'],
-                                                                                ops['train_op_adam'], ops['loss'],
-                                                                                ops['s_exp'], ops['s_pred']], feed_dict=feed_dict)
-                        train_writer_exp.add_summary(summary, step)
-
-                        log_writing(logfile_train, 'loss_train: %f' % loss_value)
-                        print('loss_train: %f' % loss_value)
-                        if epoch == MAX_EPOCH_EXP:
-                            np.save('./sub{}_exp{}'.format(i, j), s_exp.reshape(29495, 3))
         saver = tf.compat.v1.train.Saver()
         save_path = saver.save(sess, './log/model.ckpt')
-        log_writing(logfile_train, 'model saved in file: %s' % save_path)
+        log_writing(logfile_train_exp, 'model saved in file: %s' % save_path)
         print('model saved in file: %s' % save_path)
 
 
+def train_one_epoch_exp(sess, ops, train_writer_exp, logfile_train_exp, faces_triangle, epoch):
+    is_training = True
+
+    pc_data, pc_label = data_preprosessing.loadh5File('./dataset/expression_points.h5')
+
+    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label)
+
+    file_size = pc_data.shape[0]
+    num_batches = file_size
+
+    epoch_loss = 0
+
+    for batch_idx in tqdm(range(num_batches)):
+
+        start_idx = batch_idx * BATCH_SIZE
+        end_idx = (batch_idx+1) * BATCH_SIZE
+
+        point_clouds = pc_data[start_idx:end_idx, :, :]
+
+        point_label = pc_label[start_idx:end_idx, :, :]
+
+        feed_dict = {ops['point_clouds']: point_clouds,
+                     ops['label_points']: point_label,
+                     ops['faces_tri']: faces_triangle,
+                     ops['is_training_supervised']: is_training}
+        summary, step, _, loss_value, s_pred = sess.run([ops['merged'], ops['step'], ops['train_op_adam'],
+                                                       ops['loss'], ops['s_pred']], feed_dict=feed_dict)
+        train_writer_exp.add_summary(summary, step)
+
+        log_writing(logfile_train_exp, 'loss_train: %f' % loss_value)
+
+        epoch_loss += loss_value
+
+        # if epoch == MAX_EPOCH_EXP:
+        #     np.save('./real{}_exp0'.format(batch), s_pred.reshape(29495, 3))
+
+    epoch_loss_ave = epoch_loss / float(num_batches)
+    log_writing(logfile_train_exp, 'mean_loss: %f' % epoch_loss_ave)
+    return epoch_loss_ave
 
 
-def evaluate():
-
-    is_training = False
+def end_to_end_train():
+    logfile_endtoend = open('./log/log_train_endtoend.txt', 'w')
 
     with tf.Graph().as_default():
         with tf.device('/device:gpu:0'):
             point_clouds, label_points, faces_tri = model.placeholder_inputs(BATCH_SIZE, NUM_POINT)
-            is_training_supervised = tf.compat.v1.placeholder(tf.bool, shape=())
+            is_training_unsupervised = tf.compat.v1.placeholder(tf.bool, shape=())
 
-            # s_id, s_exp, s_pred, end_points = model.get_model(point_clouds, is_training_supervised)
-            # loss = model.get_loss(s_id, s_exp, s_pred, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
-
-            net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_supervised)
+            net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_unsupervised)
             f_id, f_exp = model.get_model_repre(net6)
             s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
-            loss = model.get_loss(s_pred, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            loss = model.get_loss_real(s_pred, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            tf.compat.v1.summary.scalar('loss', loss)
 
-            saver = tf.compat.v1.train.Saver()
+            epoch_lr = tf.compat.v1.Variable(1)
+            learning_rate = get_learning_rate(epoch_lr, 6000)
+            tf.compat.v1.summary.scalar('learning_rate', learning_rate)
+            optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
+            train_op_adam = optimizer.minimize(loss, global_step=epoch_lr)
+
+            saver = tf.compat.v1.train.Saver(tf.compat.v1.trainable_variables())
 
         config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -388,55 +365,93 @@ def evaluate():
         config.log_device_placement = True
 
         sess = tf.compat.v1.Session(config=config)
+        merged = tf.compat.v1.summary.merge_all()
+        train_writer_endtoend = tf.compat.v1.summary.FileWriter('./train', sess.graph)
+
+        init = tf.compat.v1.global_variables_initializer()
+        sess.run(init, {is_training_unsupervised: True})
+
         saver.restore(sess, './log/model.ckpt')
-        log_writing(logfile_eval, 'model restored')
+        log_writing(logfile_endtoend, 'model restored')
 
         ops = {'point_clouds': point_clouds,
                'label_points': label_points,
-               'is_training_supervised': is_training_supervised,
+               'is_training_unsupervised': is_training_unsupervised,
                'f_id': f_id,
                'f_exp': f_exp,
                's_id': s_id,
                's_exp': s_exp,
                's_pred': s_pred,
                'faces_tri': faces_tri,
-               'loss': loss}
+               'loss': loss,
+               'train_op_adam': train_op_adam,
+               'merged': merged,
+               'step': epoch_lr
+               }
 
-        fn_len = len(os.listdir('./subject_points'))
-        subject_num = int(fn_len / 7)
-        for i in range(5):
+        faces_triangle = data_preprosessing.open_face_obj('./subjects/sub0_exp0.obj')
 
-            faces_triangle = data_preprosessing.open_face_obj('./subjects/sub{0}_exp0.obj'.format(i))
+        for epoch in tqdm(range(1, MAX_EPOCH_END + 1)):
+            log_writing(logfile_endtoend, '************************* EPOCH %d *************************' % epoch)
+            log_writing(logfile_endtoend,
+                        '***************** LEARNING RATE: %f *****************' % learning_rate.eval(session=sess))
+            sys.stdout.flush()
+            print('************************* EPOCH %d *************************' % epoch)
 
-            for j in range(5):
-                # 1500 subjects with 6 expressions
-                log_writing(logfile_eval, '_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
-                print('_________________ sub: %d' % i + ' ' + 'exp: %d' % j + ' _________________')
-                points_data = data_preprosessing.load_npyfile('./subject_points/sub{0}_exp{1}.npy'.format(i, j))
+            epoch_mean_loss = train_one_epoch_end(sess, ops, train_writer_endtoend, logfile_endtoend, faces_triangle,
+                                                  epoch, epoch_lr)
+            print('epoch mean loss: %f' % epoch_mean_loss)
 
-                # points_data = data_preprosessing.load_npyfile('./pc_sampling/sub{0}_rand9.npy'.format(i))
-                points_data = np.expand_dims(points_data, axis=0)
+        if not os.path.exists('./log/end_to_end'):
+            os.mkdir('./log/end_to_end')
+        save_path = saver.save(sess, './log/end_to_end/model.ckpt')
+        log_writing(logfile_endtoend, 'model saved in file: %s' % save_path)
+        print('model saved in file: %s' % save_path)
 
-                label_points = points_data
 
-                # faces_triangle = data_preprosessing.open_face_file('./pc_sampling/sub{0}_rand0.npy'.format(i))
+def train_one_epoch_end(sess, ops, train_writer_endtoend, logfile_endtoend, faces_triangle, epoch):
+    is_training = True
 
-                for batch in range(BATCH_SIZE):
-                    feed_dict = {ops['point_clouds']: points_data,
-                                 ops['label_points']: label_points,
-                                 ops['faces_tri']: faces_triangle,
-                                 ops['is_training_supervised']: is_training}
-                    loss_value, s_pred = sess.run([ops['loss'], ops['s_pred']], feed_dict=feed_dict)
+    pc_data, pc_label = data_preprosessing.loadh5File('./dataset/all_points.h5')
+    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label)
 
-                    log_writing(logfile_eval, 'loss_test: %f' % loss_value)
-                    print('loss_test: %f' % loss_value)
+    file_size = pc_data.shape[0]
+    num_batches = file_size
 
-                np.save('./sub{}_exp{}'.format(i, j), s_pred.reshape(29495, 3))
+    epoch_loss = 0
+
+    for batch_idx in tqdm(range(num_batches)):
+        start_idx = batch_idx * BATCH_SIZE
+        end_idx = (batch_idx + 1) * BATCH_SIZE
+
+        point_clouds = pc_data[start_idx:end_idx, :, :]
+
+        point_label = pc_label[start_idx:end_idx, :, :]
+
+        feed_dict = {ops['point_clouds']: point_clouds,
+                     ops['label_points']: point_label,
+                     ops['faces_tri']: faces_triangle,
+                     ops['is_training_unsupervised']: is_training}
+        summary, step, _, loss_value, s_pred = sess.run([ops['merged'], ops['step'], ops['train_op_adam'],
+                                                         ops['loss'], ops['s_pred']], feed_dict=feed_dict)
+        train_writer_endtoend.add_summary(summary, step)
+
+        log_writing(logfile_endtoend, 'loss_train: %f' % loss_value)
+
+        epoch_loss += loss_value
+
+        # if epoch == MAX_EPOCH_END:
+        #     np.save('./real{}_exp0'.format(batch), s_pred.reshape(29495, 3))
+
+    epoch_loss_ave = epoch_loss / float(num_batches)
+    log_writing(logfile_endtoend, 'mean_loss: %f' % epoch_loss_ave)
+    return epoch_loss_ave
 
 
 if __name__ == '__main__':
-    train()
+    # train()
     # train_exp()
-    # logfile_train.close()
+    end_to_end_train()
     # evaluate()
+    # logfile_train.close()
     # logfile_eval.close()
