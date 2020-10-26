@@ -178,10 +178,10 @@ def loadh5File(h5file):
     return data, label
 
 
-def shuffle_data(data, label):
+def shuffle_data(data, label, n):
     idx = np.arange(data.shape[0])
     np.random.shuffle(idx)
-    idx = idx[:6000]
+    idx = idx[:n]
     return data[idx, ...], label[idx], idx
 
 

@@ -57,7 +57,7 @@ def log_writing(logfile, str_written):
     logfile.flush()
 
 
-def train():
+def train_id():
     logfile_train = open('./log/log_train.txt', 'w')
     with tf.Graph().as_default():
         with tf.device('/device:gpu:0'):
@@ -71,40 +71,43 @@ def train():
             net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_supervised, bn_decay=bn_decay)
             f_id, f_exp = model.get_model_repre(net6)
             s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
-            # loss = model.get_loss(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
-            loss = model.get_loss_real(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            loss = model.get_loss(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            # loss = model.get_loss_real(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
             tf.compat.v1.summary.scalar('loss', loss)
 
             epoch_lr = tf.compat.v1.Variable(1)
             learning_rate = get_learning_rate(epoch_lr, 1500)
             # learning_rate = BASE_LEARNING_RATE
             tf.compat.v1.summary.scalar('learning_rate', learning_rate)
+
+            saver = tf.compat.v1.train.Saver()
+
             optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
             train_op_adam = optimizer.minimize(loss, global_step=epoch_lr)
 
-            # saver = tf.compat.v1.train.Saver()
-            with tf.compat.v1.variable_scope("", reuse=True):
-                weight_conv1 = tf.compat.v1.get_variable("conv1/weights", shape=[1, 3, 1, 64])
-                bias_conv1 = tf.compat.v1.get_variable("conv1/biases", shape=[64, ])
-                weight_conv2 = tf.compat.v1.get_variable("conv2/weights", shape=[1, 1, 64, 64])
-                bias_conv2 = tf.compat.v1.get_variable("conv2/biases", shape=[64, ])
-                weight_conv3 = tf.compat.v1.get_variable("conv3/weights", shape=[1, 1, 64, 64])
-                bias_conv3 = tf.compat.v1.get_variable("conv3/biases", shape=[64, ])
-                weight_conv4 = tf.compat.v1.get_variable("conv4/weights", shape=[1, 1, 64, 128])
-                bias_conv4 = tf.compat.v1.get_variable("conv4/biases", shape=[128, ])
-                weight_conv5 = tf.compat.v1.get_variable("conv5/weights", shape=[1, 1, 128, 1024])
-                bias_conv5 = tf.compat.v1.get_variable("conv5/biases", shape=[1024, ])
 
-                weight_fc_id = tf.compat.v1.get_variable("fc1_parallel/weights", shape=[1024, 512])
-                bias_fc_id = tf.compat.v1.get_variable("fc1_parallel/biases", shape=[512, ])
-                weight_fc_de_id = tf.compat.v1.get_variable("fc_de_id/weights", shape=[512, 1024])
-                bias_fc_de_id = tf.compat.v1.get_variable("fc_de_id/biases", shape=[1024, ])
-                weight_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/weights", shape=[1024, 88485])
-                bias_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/biases", shape=[88485, ])
-            saver = tf.compat.v1.train.Saver([weight_conv1, bias_conv1, weight_conv2, bias_conv2, weight_conv3,
-                                              bias_conv3, weight_conv4, bias_conv4, weight_conv5, bias_conv5,
-                                              weight_fc_id, bias_fc_id, weight_fc_de_id, bias_fc_de_id,
-                                              weight_fc_shape_id, bias_fc_shape_id])
+            # with tf.compat.v1.variable_scope("", reuse=True):
+            #     weight_conv1 = tf.compat.v1.get_variable("conv1/weights", shape=[1, 3, 1, 64])
+            #     bias_conv1 = tf.compat.v1.get_variable("conv1/biases", shape=[64, ])
+            #     weight_conv2 = tf.compat.v1.get_variable("conv2/weights", shape=[1, 1, 64, 64])
+            #     bias_conv2 = tf.compat.v1.get_variable("conv2/biases", shape=[64, ])
+            #     weight_conv3 = tf.compat.v1.get_variable("conv3/weights", shape=[1, 1, 64, 64])
+            #     bias_conv3 = tf.compat.v1.get_variable("conv3/biases", shape=[64, ])
+            #     weight_conv4 = tf.compat.v1.get_variable("conv4/weights", shape=[1, 1, 64, 128])
+            #     bias_conv4 = tf.compat.v1.get_variable("conv4/biases", shape=[128, ])
+            #     weight_conv5 = tf.compat.v1.get_variable("conv5/weights", shape=[1, 1, 128, 1024])
+            #     bias_conv5 = tf.compat.v1.get_variable("conv5/biases", shape=[1024, ])
+            #
+            #     weight_fc_id = tf.compat.v1.get_variable("fc1_parallel/weights", shape=[1024, 512])
+            #     bias_fc_id = tf.compat.v1.get_variable("fc1_parallel/biases", shape=[512, ])
+            #     weight_fc_de_id = tf.compat.v1.get_variable("fc_de_id/weights", shape=[512, 1024])
+            #     bias_fc_de_id = tf.compat.v1.get_variable("fc_de_id/biases", shape=[1024, ])
+            #     weight_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/weights", shape=[1024, 88485])
+            #     bias_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/biases", shape=[88485, ])
+            # saver = tf.compat.v1.train.Saver([weight_conv1, bias_conv1, weight_conv2, bias_conv2, weight_conv3,
+            #                                   bias_conv3, weight_conv4, bias_conv4, weight_conv5, bias_conv5,
+            #                                   weight_fc_id, bias_fc_id, weight_fc_de_id, bias_fc_de_id,
+            #                                   weight_fc_shape_id, bias_fc_shape_id])
 
         config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
@@ -153,10 +156,11 @@ def train_one_epoch_id(sess, ops, train_writer, logfile_train, faces_triangle, e
 
     pc_data, pc_label = data_preprosessing.loadh5File('./dataset/subject_points.h5')
 
-    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label)
-
     file_size = pc_data.shape[0]
     num_batches = file_size
+
+    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label, num_batches)
+
 
     epoch_loss = 0
 
@@ -203,8 +207,8 @@ def train_exp():
             tf.compat.v1.summary.scalar('bn_decay', bn_decay)
             net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_supervised,
                                                                       bn_decay=bn_decay)
-            f_id, f_exp = model.get_model_repre(net6, trainable_id=False)
-            s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points, trainable_id=False)
+            f_id, f_exp = model.get_model_repre(net6)
+            s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
             loss = model.get_loss(s_exp, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
 
             tf.compat.v1.summary.scalar('loss', loss)
@@ -212,38 +216,47 @@ def train_exp():
             epoch_lr = tf.compat.v1.Variable(1)
             learning_rate = get_learning_rate(epoch_lr, 1500 * 6)
             tf.compat.v1.summary.scalar('learning_rate', learning_rate)
+
+            saver = tf.compat.v1.train.Saver()
+
             optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
-            train_op_adam = optimizer.minimize(loss, global_step=epoch_lr)
+            train_exp_list = tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES, "fc2_parallel") + \
+                             tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES, "fc_de_exp") + \
+                             tf.compat.v1.get_collection(tf.compat.v1.GraphKeys.TRAINABLE_VARIABLES, "fc_shape_exp")
 
-            # tf.compat.v1.reset_default_graph()
-            with tf.compat.v1.variable_scope("", reuse=True):
-                weight_conv1 = tf.compat.v1.get_variable("conv1/weights", shape=[1, 3, 1, 64])
-                bias_conv1 = tf.compat.v1.get_variable("conv1/biases", shape=[64, ])
-                weight_conv2 = tf.compat.v1.get_variable("conv2/weights", shape=[1, 1, 64, 64])
-                bias_conv2 = tf.compat.v1.get_variable("conv2/biases", shape=[64, ])
-                weight_conv3 = tf.compat.v1.get_variable("conv3/weights", shape=[1, 1, 64, 64])
-                bias_conv3 = tf.compat.v1.get_variable("conv3/biases", shape=[64, ])
-                weight_conv4 = tf.compat.v1.get_variable("conv4/weights", shape=[1, 1, 64, 128])
-                bias_conv4 = tf.compat.v1.get_variable("conv4/biases", shape=[128, ])
-                weight_conv5 = tf.compat.v1.get_variable("conv5/weights", shape=[1, 1, 128, 1024])
-                bias_conv5 = tf.compat.v1.get_variable("conv5/biases", shape=[1024, ])
+            train_op_adam = optimizer.minimize(loss, global_step=epoch_lr, var_list=train_exp_list)
 
-                weight_fc_id = tf.compat.v1.get_variable("fc1_parallel/weights", shape=[1024, 512])
-                bias_fc_id = tf.compat.v1.get_variable("fc1_parallel/biases", shape=[512, ])
-                weight_fc_de_id = tf.compat.v1.get_variable("fc_de_id/weights", shape=[512, 1024])
-                bias_fc_de_id = tf.compat.v1.get_variable("fc_de_id/biases", shape=[1024, ])
-                weight_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/weights", shape=[1024, 88485])
-                bias_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/biases", shape=[88485, ])
 
-            saver = tf.compat.v1.train.Saver([weight_conv1, bias_conv1, weight_conv2, bias_conv2, weight_conv3,
-                                              bias_conv3, weight_conv4, bias_conv4, weight_conv5, bias_conv5,
-                                              weight_fc_id, bias_fc_id, weight_fc_de_id, bias_fc_de_id,
-                                              weight_fc_shape_id, bias_fc_shape_id])
+            # with tf.compat.v1.variable_scope("", reuse=True):
+            #     weight_conv1 = tf.compat.v1.get_variable("conv1/weights", shape=[1, 3, 1, 64])
+            #     bias_conv1 = tf.compat.v1.get_variable("conv1/biases", shape=[64, ])
+            #     weight_conv2 = tf.compat.v1.get_variable("conv2/weights", shape=[1, 1, 64, 64])
+            #     bias_conv2 = tf.compat.v1.get_variable("conv2/biases", shape=[64, ])
+            #     weight_conv3 = tf.compat.v1.get_variable("conv3/weights", shape=[1, 1, 64, 64])
+            #     bias_conv3 = tf.compat.v1.get_variable("conv3/biases", shape=[64, ])
+            #     weight_conv4 = tf.compat.v1.get_variable("conv4/weights", shape=[1, 1, 64, 128])
+            #     bias_conv4 = tf.compat.v1.get_variable("conv4/biases", shape=[128, ])
+            #     weight_conv5 = tf.compat.v1.get_variable("conv5/weights", shape=[1, 1, 128, 1024])
+            #     bias_conv5 = tf.compat.v1.get_variable("conv5/biases", shape=[1024, ])
+            #
+            #     weight_fc_id = tf.compat.v1.get_variable("fc1_parallel/weights", shape=[1024, 512])
+            #     bias_fc_id = tf.compat.v1.get_variable("fc1_parallel/biases", shape=[512, ])
+            #
+            #     weight_fc_de_id = tf.compat.v1.get_variable("fc_de_id/weights", shape=[512, 1024])
+            #     bias_fc_de_id = tf.compat.v1.get_variable("fc_de_id/biases", shape=[1024, ])
+            #     weight_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/weights", shape=[1024, 88485])
+            #     bias_fc_shape_id = tf.compat.v1.get_variable("fc_shape_id/biases", shape=[88485, ])
+            #
+            # saver = tf.compat.v1.train.Saver([weight_conv1, bias_conv1, weight_conv2, bias_conv2, weight_conv3,
+            #                                   bias_conv3, weight_conv4, bias_conv4, weight_conv5, bias_conv5,
+            #                                   weight_fc_id, bias_fc_id, weight_fc_de_id, bias_fc_de_id,
+            #                                   weight_fc_shape_id, bias_fc_shape_id])
+
 
         config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
-        config.log_device_placement = True
+        config.log_device_placement = False
 
         sess = tf.compat.v1.Session(config=config)
         merged = tf.compat.v1.summary.merge_all()
@@ -254,6 +267,7 @@ def train_exp():
 
         saver.restore(sess, './log/fixed/model.ckpt')
         log_writing(logfile_train_exp, 'model restored')
+
 
         # print("weight_fc_id : %s" % weight_fc_id.eval(sess))
         # print("bias_fc_id : %s" % bias_fc_id.eval(sess))
@@ -287,11 +301,13 @@ def train_exp():
             sys.stdout.flush()
             print('************************* EPOCH %d *************************' % epoch)
 
-            epoch_mean_loss = train_one_epoch_exp(sess, ops, train_writer_exp, logfile_train_exp, faces_triangle, epoch, epoch_lr)
+            epoch_mean_loss = train_one_epoch_exp(sess, ops, train_writer_exp, logfile_train_exp, faces_triangle, epoch)
             print('epoch mean loss: %f' % epoch_mean_loss)
 
-        saver = tf.compat.v1.train.Saver()
-        save_path = saver.save(sess, './log/model.ckpt')
+        # saver = tf.compat.v1.train.Saver()
+        if not os.path.exists('./log/expression'):
+            os.mkdir('./log/expression')
+        save_path = saver.save(sess, './log/expression/model.ckpt')
         log_writing(logfile_train_exp, 'model saved in file: %s' % save_path)
         print('model saved in file: %s' % save_path)
 
@@ -301,10 +317,10 @@ def train_one_epoch_exp(sess, ops, train_writer_exp, logfile_train_exp, faces_tr
 
     pc_data, pc_label = data_preprosessing.loadh5File('./dataset/expression_points.h5')
 
-    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label)
-
     file_size = pc_data.shape[0]
     num_batches = file_size
+
+    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label, num_batches)
 
     epoch_loss = 0
 
@@ -345,7 +361,9 @@ def end_to_end_train():
             point_clouds, label_points, faces_tri = model.placeholder_inputs(BATCH_SIZE, NUM_POINT)
             is_training_unsupervised = tf.compat.v1.placeholder(tf.bool, shape=())
 
-            net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_unsupervised)
+            batch = tf.compat.v1.Variable(0)
+            bn_decay = get_bn_decay(batch)
+            net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_unsupervised, bn_decay=bn_decay)
             f_id, f_exp = model.get_model_repre(net6)
             s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
             loss = model.get_loss_real(s_pred, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
@@ -354,15 +372,16 @@ def end_to_end_train():
             epoch_lr = tf.compat.v1.Variable(1)
             learning_rate = get_learning_rate(epoch_lr, 6000)
             tf.compat.v1.summary.scalar('learning_rate', learning_rate)
+
+            saver = tf.compat.v1.train.Saver()
+
             optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
             train_op_adam = optimizer.minimize(loss, global_step=epoch_lr)
-
-            saver = tf.compat.v1.train.Saver(tf.compat.v1.trainable_variables())
 
         config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
         config.allow_soft_placement = True
-        config.log_device_placement = True
+        config.log_device_placement = False
 
         sess = tf.compat.v1.Session(config=config)
         merged = tf.compat.v1.summary.merge_all()
@@ -371,7 +390,7 @@ def end_to_end_train():
         init = tf.compat.v1.global_variables_initializer()
         sess.run(init, {is_training_unsupervised: True})
 
-        saver.restore(sess, './log/model.ckpt')
+        saver.restore(sess, './log/expression/model.ckpt')
         log_writing(logfile_endtoend, 'model restored')
 
         ops = {'point_clouds': point_clouds,
@@ -399,7 +418,7 @@ def end_to_end_train():
             print('************************* EPOCH %d *************************' % epoch)
 
             epoch_mean_loss = train_one_epoch_end(sess, ops, train_writer_endtoend, logfile_endtoend, faces_triangle,
-                                                  epoch, epoch_lr)
+                                                  epoch)
             print('epoch mean loss: %f' % epoch_mean_loss)
 
         if not os.path.exists('./log/end_to_end'):
@@ -413,7 +432,7 @@ def train_one_epoch_end(sess, ops, train_writer_endtoend, logfile_endtoend, face
     is_training = True
 
     pc_data, pc_label = data_preprosessing.loadh5File('./dataset/all_points.h5')
-    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label)
+    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label, 6000)
 
     file_size = pc_data.shape[0]
     num_batches = file_size
@@ -443,13 +462,13 @@ def train_one_epoch_end(sess, ops, train_writer_endtoend, logfile_endtoend, face
         # if epoch == MAX_EPOCH_END:
         #     np.save('./real{}_exp0'.format(batch), s_pred.reshape(29495, 3))
 
-    epoch_loss_ave = epoch_loss / float(num_batches)
+    epoch_loss_ave = epoch_loss / float(6000)
     log_writing(logfile_endtoend, 'mean_loss: %f' % epoch_loss_ave)
     return epoch_loss_ave
 
 
 if __name__ == '__main__':
-    # train()
+    # train_id()
     # train_exp()
     end_to_end_train()
     # evaluate()
