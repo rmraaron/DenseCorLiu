@@ -166,6 +166,7 @@ def get_loss(s_id, faces, label_points, end_points, lambda1, lambda2):
     s_target = tf.reshape(label_points, shape=(1, 88485))
     shp_target = tf.reshape(s_target, shape=(29495, 3))
 
+
     normals_pred = data_preprosessing.normals_cal(shp_id, faces)
     normals_target = data_preprosessing.normals_cal(label_points, faces)
 

@@ -5,6 +5,7 @@ from tqdm import tqdm
 import model_new as model
 import os
 import sys
+import h5py
 import data_preprosessing
 
 DECAY_STEP = 200000
@@ -195,7 +196,7 @@ def train_one_epoch_id(sess, ops, train_writer, logfile_train, faces_triangle, e
 
 
 def train_exp():
-    logfile_train_exp = open('./log/log_train_exp.txt', 'w')
+    logfile_train_exp = open('./log/log_train_exp_rand.txt', 'w')
 
     with tf.Graph().as_default():
         with tf.device('/device:gpu:0'):
@@ -265,7 +266,7 @@ def train_exp():
         init = tf.compat.v1.global_variables_initializer()
         sess.run(init, {is_training_supervised: True})
 
-        saver.restore(sess, './log/fixed/model.ckpt')
+        saver.restore(sess, './log/random_sub/model.ckpt')
         log_writing(logfile_train_exp, 'model restored')
 
 
@@ -305,9 +306,9 @@ def train_exp():
             print('epoch mean loss: %f' % epoch_mean_loss)
 
         # saver = tf.compat.v1.train.Saver()
-        if not os.path.exists('./log/expression'):
-            os.mkdir('./log/expression')
-        save_path = saver.save(sess, './log/expression/model.ckpt')
+        if not os.path.exists('./log/expression_rand'):
+            os.mkdir('./log/expression_rand')
+        save_path = saver.save(sess, './log/expression_rand/model.ckpt')
         log_writing(logfile_train_exp, 'model saved in file: %s' % save_path)
         print('model saved in file: %s' % save_path)
 
@@ -354,7 +355,7 @@ def train_one_epoch_exp(sess, ops, train_writer_exp, logfile_train_exp, faces_tr
 
 
 def end_to_end_train():
-    logfile_endtoend = open('./log/log_train_endtoend.txt', 'w')
+    logfile_endtoend = open('./log/log_train_endtoend_all.txt', 'w')
 
     with tf.Graph().as_default():
         with tf.device('/device:gpu:0'):
@@ -370,7 +371,7 @@ def end_to_end_train():
             tf.compat.v1.summary.scalar('loss', loss)
 
             epoch_lr = tf.compat.v1.Variable(1)
-            learning_rate = get_learning_rate(epoch_lr, 6000)
+            learning_rate = get_learning_rate(epoch_lr, 12998)
             tf.compat.v1.summary.scalar('learning_rate', learning_rate)
 
             saver = tf.compat.v1.train.Saver()
@@ -390,8 +391,10 @@ def end_to_end_train():
         init = tf.compat.v1.global_variables_initializer()
         sess.run(init, {is_training_unsupervised: True})
 
-        saver.restore(sess, './log/expression/model.ckpt')
+        saver.restore(sess, './log/expression_rand/model.ckpt')
         log_writing(logfile_endtoend, 'model restored')
+
+        sess.run(init, {epoch_lr: 0})
 
         ops = {'point_clouds': point_clouds,
                'label_points': label_points,
@@ -421,9 +424,9 @@ def end_to_end_train():
                                                   epoch)
             print('epoch mean loss: %f' % epoch_mean_loss)
 
-        if not os.path.exists('./log/end_to_end'):
-            os.mkdir('./log/end_to_end')
-        save_path = saver.save(sess, './log/end_to_end/model.ckpt')
+        if not os.path.exists('./log/end_to_end_real'):
+            os.mkdir('./log/end_to_end_real')
+        save_path = saver.save(sess, './log/end_to_end_real/model.ckpt')
         log_writing(logfile_endtoend, 'model saved in file: %s' % save_path)
         print('model saved in file: %s' % save_path)
 
@@ -432,12 +435,16 @@ def train_one_epoch_end(sess, ops, train_writer_endtoend, logfile_endtoend, face
     is_training = True
 
     pc_data, pc_label = data_preprosessing.loadh5File('./dataset/all_points.h5')
-    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label, 6000)
+
+    epoch_loss = 0
+
+
+    pc_data = pc_data[:2498, ...]
+    pc_label = pc_data
+    pc_data, pc_label, shuffle_idx = data_preprosessing.shuffle_data(pc_data, pc_label, 2498)
 
     file_size = pc_data.shape[0]
     num_batches = file_size
-
-    epoch_loss = 0
 
     for batch_idx in tqdm(range(num_batches)):
         start_idx = batch_idx * BATCH_SIZE
@@ -462,15 +469,131 @@ def train_one_epoch_end(sess, ops, train_writer_endtoend, logfile_endtoend, face
         # if epoch == MAX_EPOCH_END:
         #     np.save('./real{}_exp0'.format(batch), s_pred.reshape(29495, 3))
 
-    epoch_loss_ave = epoch_loss / float(6000)
+    epoch_loss_ave = epoch_loss / float(num_batches)
     log_writing(logfile_endtoend, 'mean_loss: %f' % epoch_loss_ave)
     return epoch_loss_ave
 
+
+def train_random_id():
+    logfile_train = open('./log/log_train_random.txt', 'w')
+    with tf.Graph().as_default():
+        with tf.device('/device:gpu:0'):
+
+            point_clouds, label_points, faces_tri = model.placeholder_inputs(BATCH_SIZE, NUM_POINT)
+            is_training_supervised = tf.compat.v1.placeholder(tf.bool, shape=())
+
+            batch = tf.compat.v1.Variable(0)
+            bn_decay = get_bn_decay(batch)
+            tf.compat.v1.summary.scalar('bn_decay', bn_decay)
+            net6, num_point, end_points = model.get_model_encoder(point_clouds, is_training_supervised, bn_decay=bn_decay)
+            f_id, f_exp = model.get_model_repre(net6)
+            s_id, s_exp, s_pred, end_points = model.get_model_decoder(f_id, f_exp, num_point, end_points)
+            loss = model.get_loss(s_id, faces_tri, label_points, end_points, LAMBDA1, LAMBDA2)
+            tf.compat.v1.summary.scalar('loss', loss)
+
+            epoch_lr = tf.compat.v1.Variable(1)
+            learning_rate = get_learning_rate(epoch_lr, 15000)
+            tf.compat.v1.summary.scalar('learning_rate', learning_rate)
+
+            saver = tf.compat.v1.train.Saver()
+
+            optimizer = tf.compat.v1.train.AdamOptimizer(learning_rate=learning_rate)
+            train_op_adam = optimizer.minimize(loss, global_step=epoch_lr)
+
+
+        config = tf.compat.v1.ConfigProto()
+        config.gpu_options.allow_growth = True
+        config.allow_soft_placement = True
+        config.log_device_placement = False
+
+        sess = tf.compat.v1.Session(config=config)
+        merged = tf.compat.v1.summary.merge_all()
+        train_writer_id = tf.compat.v1.summary.FileWriter('./train', sess.graph)
+
+        init = tf.compat.v1.global_variables_initializer()
+        sess.run(init, {is_training_supervised: True})
+
+        ops = {'point_clouds': point_clouds,
+               'label_points': label_points,
+               'is_training_supervised': is_training_supervised,
+               's_id': s_id,
+               's_exp': s_exp,
+               's_pred': s_pred,
+               'faces_tri': faces_tri,
+               'loss': loss,
+               'train_op_adam': train_op_adam,
+               'merged': merged,
+               'step': epoch_lr}
+
+        for epoch in tqdm(range(1, MAX_EPOCH_ID + 1)):
+            log_writing(logfile_train, '************************* EPOCH %d *************************' % epoch)
+            log_writing(logfile_train,
+                        '***************** LEARNING RATE: %f *****************' % learning_rate.eval(session=sess))
+            sys.stdout.flush()
+            print('************************* EPOCH %d *************************' % epoch)
+
+            epoch_mean_loss = train_one_epoch_random(sess, ops, train_writer_id, logfile_train, epoch_lr)
+            print('epoch mean loss: %f' % epoch_mean_loss)
+
+
+        save_path = saver.save(sess, './log/random_sub/model.ckpt')
+        log_writing(logfile_train, 'model saved in file: %s' % save_path)
+        print('model saved in file: %s' % save_path)
+
+
+def train_one_epoch_random(sess, ops, train_writer, logfile_train, epoch_lr):
+    is_training = True
+
+    epoch_loss = 0
+
+    for i in tqdm(range(10)):
+        f = h5py.File('./dataset/random_subjects/random_sub_{0}.h5'.format(i))
+        pc_data = f['data'][:]
+        faces_triangle = f['faces'][:]
+
+        file_size = pc_data.shape[0]
+        num_batches = file_size
+
+        pc_data, faces_triangle, shuffle_idx = data_preprosessing.shuffle_data(pc_data, faces_triangle, num_batches)
+        pc_label = pc_data
+
+        f.close()
+
+        for batch_idx in tqdm(range(num_batches)):
+
+            start_idx = batch_idx * BATCH_SIZE
+            end_idx = (batch_idx+1) * BATCH_SIZE
+
+            point_clouds = pc_data[start_idx:end_idx, :, :]
+
+            point_label = pc_label[start_idx:end_idx, :, :]
+
+            face_triangle = np.squeeze(faces_triangle[start_idx:end_idx, :, :])
+
+            feed_dict = {ops['point_clouds']: point_clouds,
+                         ops['label_points']: point_label,
+                         ops['faces_tri']: face_triangle,
+                         ops['is_training_supervised']: is_training}
+            summary, step, _, loss_value, s_id = sess.run([ops['merged'], ops['step'], ops['train_op_adam'],
+                                                           ops['loss'], ops['s_id']], feed_dict=feed_dict)
+            train_writer.add_summary(summary, step)
+
+            log_writing(logfile_train, 'loss_train: %f' % loss_value)
+
+            epoch_loss += loss_value
+
+            # if epoch == MAX_EPOCH_ID:
+            #     np.save('./real{}_exp0'.format(batch), s_id.reshape(29495, 3))
+
+        epoch_loss_ave = epoch_loss / float(num_batches * (i+1))
+        log_writing(logfile_train, 'mean_loss: %f' % epoch_loss_ave)
+    return epoch_loss_ave
 
 if __name__ == '__main__':
     # train_id()
     # train_exp()
     end_to_end_train()
+    # train_random_id()
     # evaluate()
     # logfile_train.close()
     # logfile_eval.close()
