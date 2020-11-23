@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 import data_preprosessing
 
 
@@ -96,10 +97,10 @@ def full_connected(inputs, num_outputs, scope, use_xavier=True, stddev=1e-3,
         return outputs
 
 
-def placeholder_inputs(batch_size, num_points):
+def placeholder_inputs(batch_size, num_points, num_faces=58366):
     pointclouds = tf.compat.v1.placeholder(tf.float32, shape=(batch_size, num_points, 3))
     label_points = tf.compat.v1.placeholder(tf.float32, shape=(batch_size, num_points, 3))
-    faces_tri = tf.compat.v1.placeholder(tf.int32, shape=(58366, 3))
+    faces_tri = tf.compat.v1.placeholder(tf.int32, shape=(num_faces, 3))
     return pointclouds, label_points, faces_tri
 
 
@@ -190,12 +191,47 @@ def get_loss(s_id, faces, label_points, end_points, lambda1, lambda2):
     return loss_supervised
 
 
-def get_loss_real(s_id, faces, label_points, end_points, lambda1, lambda2):
+def get_loss_real(s_id, faces, label_points, end_points, lambda1, lambda2, epsilon=0.001):
 
     shp_id = tf.reshape(s_id, shape=(29495, 3))
+    s_target = tf.reshape(label_points, shape=(1, 88485))
+    shp_target = tf.reshape(s_target, shape=(29495, 3))
 
     dist1, idx1, dist2, idx2 = data_preprosessing.nn_distance(shp_id, label_points)
-    loss_unsupervised = tf.reduce_sum(dist1) + tf.reduce_sum(dist2)
+    # delete_idx1 = tf.where(dist1<=epsilon)
+    # dist1 = tf.gather_nd(dist1, delete_idx1)
+    # delete_idx2 = tf.where(dist1 <= epsilon)
+    # dist2 = tf.gather_nd(dist2, delete_idx2)
+
+    # Chamfer distance as unsupervised vertices loss
+    vertices_unsupervised = tf.reduce_sum(dist1) + tf.reduce_sum(dist2)
+
+    idx1 = tf.reshape(idx1, shape=(29495,1))
+    label_points = tf.squeeze(label_points)
+    closest_points = tf.gather_nd(label_points, idx1)
+    normals_pred = data_preprosessing.normals_cal(shp_id, faces)
+    normals_target = data_preprosessing.normals_cal(closest_points, faces)
+    normal_unsupervised = tf.reduce_sum(1 - tf.reduce_sum(normals_target * normals_pred, axis=1)) / normals_target.get_shape()[0]
+
+    edge_0_pred, edge_1_pred, edge_2_pred = data_preprosessing.edge_cal(shp_id, faces)
+    edge_0_target, edge_1_target, edge_2_target = data_preprosessing.edge_cal(shp_target, faces)
+
+    different_point_idx = tf.where(tf.math.logical_and(tf.math.logical_and(edge_0_target>0, edge_1_target > 0), edge_2_target > 0))
+
+    edge_0_pred = tf.gather_nd(edge_0_pred, different_point_idx)
+    edge_1_pred = tf.gather_nd(edge_1_pred, different_point_idx)
+    edge_2_pred = tf.gather_nd(edge_2_pred, different_point_idx)
+
+    edge_0_target = tf.gather_nd(edge_0_target, different_point_idx)
+    edge_1_target = tf.gather_nd(edge_1_target, different_point_idx)
+    edge_2_target = tf.gather_nd(edge_2_target, different_point_idx)
+
+    edges_unsupervised = tf.reduce_mean(tf.reduce_sum(tf.abs(edge_0_pred / edge_0_target - 1)) +
+                            tf.reduce_sum(tf.abs(edge_1_pred / edge_1_target - 1)) +
+                            tf.reduce_sum(tf.abs(edge_2_pred / edge_2_target - 1))) / 57896
+
+    loss_unsupervised = vertices_unsupervised + lambda1 * normal_unsupervised + lambda2 * edges_unsupervised
+
     return loss_unsupervised
 
 

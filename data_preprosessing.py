@@ -11,12 +11,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 nn_distance_module=tf.load_op_library(os.path.join(BASE_DIR, 'tf_nndistance_so.so'))
 
 
-def open_face_obj(obj_file):
+def open_face_obj(obj_file, n=58366):
 
     with open(obj_file, 'r') as obj:
         data = obj.read()
         lines = data.splitlines()
-        faces = np.zeros(dtype=np.int, shape=(58366, 3))
+        faces = np.zeros(dtype=np.int, shape=(n, 3))
         i = 0
         for line in lines:
             if line:
@@ -169,6 +169,12 @@ def _nn_distance_grad(op,grad_dist1,grad_idx1,grad_dist2,grad_idx2):
     idx1=op.outputs[1]
     idx2=op.outputs[3]
     return nn_distance_module.nn_distance_grad(xyz1,xyz2,grad_dist1,idx1,grad_dist2,idx2)
+
+
+def loadh5File_single(h5file):
+    f = h5py.File(h5file)
+    data = f['data'][:]
+    return data
 
 
 def loadh5File(h5file):
