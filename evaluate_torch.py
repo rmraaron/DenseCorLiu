@@ -9,9 +9,6 @@ device = torch.device('cuda')
 
 BATCH_SIZE = 1
 NUM_POINT = 29495
-MAX_EPOCH_ID = 20
-MAX_EPOCH_EXP = 20
-MAX_EPOCH_END = 10
 
 LAMBDA1 = 1.6e-4
 LAMBDA2 = 1.6e-4
@@ -81,7 +78,7 @@ def eval_exp():
 def eval_endtoend():
     logfile_eval = open('./log_torch/log_eval_end.txt', 'w')
     densecor = model_torch.DenseCor().to(device)
-    densecor.load_state_dict(torch.load('./log_torch/end_to_end/epoch16_model.pth'))
+    densecor.load_state_dict(torch.load('./log_torch/end_to_end/epoch20_model.pth'))
 
     faces_triangle_real = data_preprosessing.open_face_obj('./test_subdivision_simp.obj', 58034)
     faces_triangle_syn = data_preprosessing.open_face_obj('./subjects/sub0_exp0.obj')
@@ -115,5 +112,5 @@ def eval_endtoend():
 
 if __name__ == '__main__':
     # eval_id()
-    eval_exp()
-    # eval_endtoend()
+    # eval_exp()
+    eval_endtoend()

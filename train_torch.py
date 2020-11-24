@@ -14,7 +14,7 @@ BATCH_SIZE = 1
 NUM_POINT = 29495
 MAX_EPOCH_ID = 20
 MAX_EPOCH_EXP = 20
-MAX_EPOCH_END = 50
+MAX_EPOCH_END = 20
 
 LAMBDA1 = 1.6e-4
 LAMBDA2 = 1.6e-4
@@ -162,7 +162,7 @@ def end_to_end_train():
     logfile_train = open('./log_torch/log_train_endtoend.txt', 'w')
     densecor = model_torch.DenseCor().to(device)
     densecor.load_state_dict(torch.load('./log_torch/exp/model.pth'))
-    optimizer = optim.Adam(densecor.parameters(), lr=BASE_LEARNING_RATE)
+    optimizer = optim.Adam(densecor.parameters(), lr=BASE_LEARNING_RATE * 0.01)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
 
     faces_triangle_real = data_preprosessing.open_face_obj('./test_subdivision_simp.obj', 58034)

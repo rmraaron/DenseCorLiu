@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
-from chamfer_distance import ChamferDistance
+from pytorch3d.loss import chamfer_distance
+from pytorch3d.ops.knn import knn_points
+from pytorch3d.loss.chamfer import _handle_pointcloud_input
 
 
 class DenseCor(nn.Module):
@@ -119,11 +121,14 @@ def get_loss_real(s_pred, faces, label_points, chamfer_dist, lambda1, lambda2, e
     dist1, dist2, idx1, idx2 = chamfer_dist(s_pred, label_points)
 
     # Chamfer distance as unsupervised vertices loss
-    # vertices_unsupervised = torch.sum(torch.where(dist1 <= epsilon, dist1, torch.tensor([0.]).cuda())) + \
-    #     torch.sum(torch.where(dist2 <= epsilon, dist2, torch.tensor([0.]).cuda()))
+    vertices_unsupervised = torch.sum(torch.where(dist1 <= epsilon, dist1, torch.tensor([0.]).cuda())) + \
+        torch.sum(torch.where(dist2 <= epsilon, dist2, torch.tensor([0.]).cuda()))
 
-    vertices_unsupervised = torch.sum(dist1) + torch.sum(dist2)
+    # vertices_unsupervised = torch.sum(dist1) + torch.sum(dist2)
+    # vertices_unsupervised = chamfer_distance(s_pred, label_points, point_reduction="sum")[0]
 
+    # x_nn_idx = knn_points(s_pred, label_points, K=1).idx
+    # x_nn_idx = torch.squeeze(x_nn_idx, dim=2)
     closest_points = label_points[0, idx1[0].to(torch.long)]  # Assume batch size == 1.
     normals_pred = normals_cal(s_pred[0], faces)  # Assume batch size == 1.
     normals_target = normals_cal(closest_points, faces)
