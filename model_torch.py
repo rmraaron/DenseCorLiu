@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from pytorch3d.loss import chamfer_distance
 from pytorch3d.ops.knn import knn_points
 from pytorch3d.loss.chamfer import _handle_pointcloud_input
+from pytorch3d.structures import Meshes
 
 
 class DenseCor(nn.Module):
@@ -116,7 +117,11 @@ def get_loss(s_pred, faces, label_points, lambda1, lambda2):
     return loss_supervised
 
 
-def get_loss_real(s_pred, faces, label_points, chamfer_dist, lambda1, lambda2, epsilon=0.001):
+edge_array = torch.from_numpy(np.load("./edge_index.npy")).to(torch.long).cuda()
+template_edge_lengths = torch.from_numpy(np.load("./template_edge_length.npy")).cuda()
+
+
+def get_loss_real(s_pred, faces_real, faces_syn, label_points, chamfer_dist, laplacian_loss, lambda1, lambda2, lambda3, epsilon=0.001):
 
     dist1, dist2, idx1, idx2 = chamfer_dist(s_pred, label_points)
 
@@ -129,29 +134,47 @@ def get_loss_real(s_pred, faces, label_points, chamfer_dist, lambda1, lambda2, e
 
     # x_nn_idx = knn_points(s_pred, label_points, K=1).idx
     # x_nn_idx = torch.squeeze(x_nn_idx, dim=2)
+
     closest_points = label_points[0, idx1[0].to(torch.long)]  # Assume batch size == 1.
-    normals_pred = normals_cal(s_pred[0], faces)  # Assume batch size == 1.
-    normals_target = normals_cal(closest_points, faces)
-    normal_unsupervised = torch.sum(-torch.sum(normals_target * normals_pred, dim=1) + 1) / \
-        normals_target.shape[0]  # Mean normal loss.
 
-    edge_0_pred, edge_1_pred, edge_2_pred = edge_cal(s_pred[0], faces)  # Assume batch size == 1.
-    edge_0_target, edge_1_target, edge_2_target = edge_cal(label_points[0], faces)  # Assume batch size == 1.
+    # normals_pred = normals_cal(s_pred[0], faces)  # Assume batch size == 1.
+    # normals_target = normals_cal(closest_points, faces)
 
-    def calc_edge_loss(pred_length, target_length):
-        inf_count = torch.sum(target_length == 0)  # Remove zero edges into average counting.+
+    vertex_normals_pred = Meshes([s_pred[0]], [torch.from_numpy(faces_syn).cuda()]).verts_normals_list()[0]
+    vertex_normals_target = Meshes([closest_points], [torch.from_numpy(faces_real).cuda()]).verts_normals_list()[0]
 
-        target_length = torch.where(target_length == 0, pred_length, target_length)
-        div = pred_length / target_length
-        res = torch.abs(div - 1)
-        res = torch.sum(res) / (res.shape[0] - inf_count)
-        return res
+    normal_unsupervised = torch.sum(-torch.sum(vertex_normals_target * vertex_normals_pred, dim=1) + 1) / \
+        vertex_normals_target.shape[0]  # Mean normal loss.
 
-    edges_unsupervised = (calc_edge_loss(edge_0_pred, edge_0_target) +
-                          calc_edge_loss(edge_1_pred, edge_1_target) +
-                          calc_edge_loss(edge_2_pred, edge_2_target)) / 3
+    # edge_0_pred, edge_1_pred, edge_2_pred = edge_cal(s_pred[0], faces_syn)  # Assume batch size == 1.
+    # edge_0_target, edge_1_target, edge_2_target = edge_cal(label_points[0], faces_real)  # Assume batch size == 1.
+    # edge_0_target, edge_1_target, edge_2_target = edge_cal(template, faces_syn)
 
-    loss_unsupervised = vertices_unsupervised + lambda1 * normal_unsupervised + lambda2 * edges_unsupervised
+    pred_edge_lengths = torch.norm(s_pred[0][edge_array[:, 0]] - s_pred[0][edge_array[:, 1]], dim=1)
+
+    edges_unsupervised = torch.sum(torch.abs(pred_edge_lengths / template_edge_lengths - 1)) / template_edge_lengths.size(0)
+
+    # def calc_edge_loss(pred_length, target_length):
+    #     inf_count = torch.sum(target_length == 0)  # Remove zero edges into average counting.+
+    #
+    #     target_length = torch.where(target_length == 0, pred_length, target_length)
+    #     div = pred_length / target_length
+    #     res = torch.abs(div - 1)
+    #     res = torch.sum(res) / (res.shape[0] - inf_count)
+    #     return res
+    #
+    # # edges_unsupervised = (calc_edge_loss(edge_0_pred, edge_0_target) +
+    # #                       calc_edge_loss(edge_1_pred, edge_1_target) +
+    # #                       calc_edge_loss(edge_2_pred, edge_2_target)) / 3
+    #
+    # edges_unsupervised = torch.mean(torch.sum(torch.abs(edge_0_pred / edge_0_target - 1)) +
+    #                                 torch.sum(torch.abs(edge_1_pred / edge_1_target - 1)) +
+    #                                 torch.sum(torch.abs(edge_2_pred / edge_2_target - 1))) / 58366
+
+    lapla_loss = laplacian_loss(s_pred)
+
+    print(vertices_unsupervised, lambda1 * normal_unsupervised, lambda2 * edges_unsupervised, lambda3 * lapla_loss)
+    loss_unsupervised = vertices_unsupervised + lambda1 * normal_unsupervised + lambda2 * edges_unsupervised + lambda3 * lapla_loss
     return loss_unsupervised
 
 

@@ -27,6 +27,21 @@ def open_face_obj(obj_file, n=58366):
     return faces
 
 
+def open_vertices_obj(obj_file, n=29495):
+    with open(obj_file, 'r') as obj:
+        data = obj.read()
+    lines = data.splitlines()
+    vertices = np.zeros(dtype=np.float, shape=(n, 3))
+    i = 0
+    for line in lines:
+        if line:
+            if line[:2] == 'v ':
+                line_v = re.split(' ', line)
+                vertices[i] = [float(line_v[1]), float(line_v[2]), float(line_v[3])]
+                i += 1
+    return vertices
+
+
 def open_face_file(npy_file):
 
     # with open(obj_file, 'r') as obj:
